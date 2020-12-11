@@ -1,5 +1,27 @@
-export * from './en.js';
-export * from './fr.js';
-export * from './nl.js';
-export * from './pt-br.js';
-export * from './tr.js';
+/* eslint-disable quote-props */
+export default {
+  ca: require('./ca'),
+  de: require('./de'),
+  en: require('./en'),
+  eo: require('./eo'),
+  es: require('./es'),
+  eu: require('./eu'),
+  fr: require('./fr'),
+  gl: require('./gl'),
+  id: require('./id'),
+  it: require('./it'),
+  nb: require('./nb'),
+  nl: require('./nl'),
+  ph: require('./ph'),
+  pl: require('./pl'),
+  pt: require('./pt'),
+  ptBr: require('./ptBr'),
+  ru: require('./ru'),
+  sr: require('./sr'),
+  sv: require('./sv'),
+  th: require('./th'),
+  tr: require('./tr'),
+  uk: require('./uk'),
+  zhCn: require('./zhCn'),
+  zhTw: require('./zhTw'),
+};

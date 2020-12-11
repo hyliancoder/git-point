@@ -1,5 +1,6 @@
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
+import { bindActionCreators } from 'redux';
 import { FlatList, View } from 'react-native';
 
 import { ViewContainer, UserListItem, LoadingUserListItem } from 'components';
@@ -11,9 +12,13 @@ const mapStateToProps = state => ({
   isPendingFollowing: state.user.isPendingFollowing,
 });
 
-const mapDispatchToProps = dispatch => ({
-  getFollowing: (user, type) => dispatch(getFollowing(user, type)),
-});
+const mapDispatchToProps = dispatch =>
+  bindActionCreators(
+    {
+      getFollowing,
+    },
+    dispatch
+  );
 
 class FollowingList extends Component {
   props: {
@@ -45,15 +50,17 @@ class FollowingList extends Component {
             return <LoadingUserListItem key={index} />;
           })}
 
-        {!isPendingFollowing &&
+        {!isPendingFollowing && (
           <View>
             <FlatList
               data={following}
               keyExtractor={this.keyExtractor}
-              renderItem={({ item }) =>
-                <UserListItem user={item} navigation={navigation} />}
+              renderItem={({ item }) => (
+                <UserListItem user={item} navigation={navigation} />
+              )}
             />
-          </View>}
+          </View>
+        )}
       </ViewContainer>
     );
   }

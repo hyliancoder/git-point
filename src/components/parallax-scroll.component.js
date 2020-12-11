@@ -1,13 +1,12 @@
-import React from 'react';
-import { View, Text, Dimensions, StyleSheet } from 'react-native';
+import React, { Component } from 'react';
+import { View, Dimensions, Platform, TouchableOpacity } from 'react-native';
 import ParallaxScrollView from 'react-native-parallax-scroll-view';
 import { Icon } from 'react-native-elements';
+import styled from 'styled-components';
 
-import { colors, fonts, normalize } from 'config';
+import { colors, normalize, fonts } from 'config';
 
-const window = Dimensions.get('window');
-const PARALLAX_HEADER_HEIGHT = window.height / 2;
-const STICKY_HEADER_HEIGHT = 62;
+const STICKY_HEADER_HEIGHT = 44;
 
 type Props = {
   renderContent: any,
@@ -21,95 +20,140 @@ type Props = {
   refreshControl?: React.Element<*>,
 };
 
-const styles = StyleSheet.create({
-  background: {
-    position: 'absolute',
-    top: 0,
-    width: window.width,
-    backgroundColor: colors.primaryDark,
-    height: PARALLAX_HEADER_HEIGHT,
-  },
-  stickySection: {
-    height: STICKY_HEADER_HEIGHT,
-    backgroundColor: colors.primaryDark,
-    width: window.width,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  stickySectionText: {
-    color: colors.white,
-    ...fonts.fontPrimaryBold,
-    fontSize: normalize(16),
-    margin: 10,
-  },
-  fixedSectionLeft: {
-    position: 'absolute',
-    bottom: 0,
-  },
-  fixedSectionRight: {
-    position: 'absolute',
-    bottom: 10,
-    right: 10,
-  },
-});
+type State = {
+  parallaxHeaderHeight: number,
+};
 
-export const ParallaxScroll = ({
-  renderContent,
-  stickyTitle,
-  navigateBack,
-  showMenu,
-  menuIcon,
-  menuAction,
-  navigation,
-  children,
-  refreshControl,
-}: Props) =>
-  <ParallaxScrollView
-    backgroundColor={colors.primaryDark}
-    stickyHeaderHeight={STICKY_HEADER_HEIGHT}
-    parallaxHeaderHeight={PARALLAX_HEADER_HEIGHT}
-    backgroundSpeed={10}
-    renderBackground={() =>
-      <View key="background">
-        <View style={styles.background} />
-      </View>}
-    renderForeground={renderContent}
-    renderStickyHeader={() =>
-      <View key="sticky-header" style={styles.stickySection}>
-        <Text style={styles.stickySectionText}>
-          {stickyTitle}
-        </Text>
-      </View>}
-    renderFixedHeader={() =>
-      <View key="fixed-header">
-        {navigateBack &&
-          <View style={styles.fixedSectionLeft}>
-            <Icon
-              style={styles.headerIcon}
-              name="chevron-left"
-              size={42}
-              color={colors.white}
-              onPress={() => navigation.goBack()}
-              underlayColor="transparent"
-            />
-          </View>}
+const Background = styled.View`
+  position: absolute;
+  top: 0;
+  background-color: ${colors.primaryDark};
+  height: ${props => props.height};
+`;
 
-        {showMenu &&
-          <View style={styles.fixedSectionRight}>
-            <Icon
-              style={styles.headerIcon}
-              name={menuIcon}
-              type="font-awesome"
-              onPress={menuAction}
-              color={colors.white}
-              underlayColor="transparent"
-            />
-          </View>}
-      </View>}
-    refreshControl={refreshControl}
-  >
-    {children}
-  </ParallaxScrollView>;
+const StickySection = styled.View`
+  height: ${STICKY_HEADER_HEIGHT};
+  background-color: ${colors.primaryDark};
+  align-items: center;
+  justify-content: flex-end;
+`;
+
+const StickySectionText = styled.Text`
+  color: ${colors.white};
+  font-size: ${normalize(16)};
+  margin: 10px;
+  ${fonts.fontPrimaryBold};
+`;
+
+const FixedSectionLeft = styled.View`
+  position: absolute;
+  bottom: 0;
+`;
+
+const FixedSectionRight = styled.View`
+  position: absolute;
+  bottom: 10;
+  right: 10;
+`;
+
+export class ParallaxScroll extends Component {
+  props: Props;
+
+  state: State;
+
+  constructor(props) {
+    super(props);
+    this.state = {
+      parallaxHeaderHeight: this.getParallaxHeaderHeight(),
+    };
+  }
+
+  componentDidMount() {
+    Dimensions.addEventListener('change', this.dimensionsDidChange);
+  }
+
+  getParallaxHeaderHeight = (window = Dimensions.get('window')) => {
+    let divider = 2;
+
+    if (window.width > window.height) {
+      divider = Platform.OS === 'ios' ? 1.2 : 1.4;
+    }
+
+    return window.height / divider;
+  };
+
+  dimensionsDidChange = ({ window }) => {
+    this.setState({
+      parallaxHeaderHeight: this.getParallaxHeaderHeight(window),
+    });
+  };
+
+  render() {
+    const {
+      renderContent,
+      stickyTitle,
+      navigateBack,
+      showMenu,
+      menuIcon,
+      menuAction,
+      navigation,
+      children,
+      refreshControl,
+    } = this.props;
+
+    return (
+      <ParallaxScrollView
+        backgroundColor={colors.primaryDark}
+        stickyHeaderHeight={STICKY_HEADER_HEIGHT}
+        parallaxHeaderHeight={this.state.parallaxHeaderHeight}
+        backgroundSpeed={10}
+        renderBackground={() => (
+          <View key="background">
+            <Background height={this.state.parallaxHeaderHeight} />
+          </View>
+        )}
+        renderForeground={renderContent}
+        renderStickyHeader={() => (
+          <StickySection key="sticky-header">
+            <StickySectionText>{stickyTitle}</StickySectionText>
+          </StickySection>
+        )}
+        renderFixedHeader={() => (
+          <View key="fixed-header">
+            {navigateBack && (
+              <FixedSectionLeft>
+                <TouchableOpacity onPress={() => navigation.goBack()}>
+                  <Icon
+                    name="chevron-left"
+                    size={42}
+                    color={colors.white}
+                    underlayColor="transparent"
+                  />
+                </TouchableOpacity>
+              </FixedSectionLeft>
+            )}
+
+            {showMenu && (
+              <FixedSectionRight>
+                <TouchableOpacity onPress={menuAction}>
+                  <Icon
+                    name={menuIcon}
+                    type="font-awesome"
+                    color={colors.white}
+                    underlayColor="transparent"
+                  />
+                </TouchableOpacity>
+              </FixedSectionRight>
+            )}
+          </View>
+        )}
+        refreshControl={refreshControl}
+      >
+        {children}
+      </ParallaxScrollView>
+    );
+  }
+}
 
 ParallaxScroll.defaultProps = {
   navigateBack: false,

@@ -1,12 +1,11 @@
 import React, { Component } from 'react';
-import { bindActionCreators } from 'redux';
+import styled from 'styled-components';
 import { connect } from 'react-redux';
-import { StyleSheet, RefreshControl } from 'react-native';
+import { RefreshControl, ActivityIndicator } from 'react-native';
 import { ListItem } from 'react-native-elements';
-import { createStructuredSelector } from 'reselect';
-import {
-  getAuthLanguage,
-} from 'auth';
+import ActionSheet from 'react-native-actionsheet';
+import { SafeAreaView } from 'react-navigation';
+import { RestClient } from 'api';
 import {
   ViewContainer,
   UserProfile,
@@ -16,65 +15,37 @@ import {
   ParallaxScroll,
   EntityInfo,
 } from 'components';
-import {
-  emojifyText,
-  translate,
-} from 'utils';
-import { colors, fonts } from 'config';
-import {
-  // actions
-  fetchOrganizations,
-  fetchOrganizationMembers,
-  // Selectors
-  getOrganization,
-  getOrganizationRepositories,
-  getOrganizationMembers,
-  getOrganizationIsPendingOrg,
-  getOrganizationIsPendingRepos,
-  getOrganizationIsPendingMembers,
-} from '../index';
+import { emojifyText, t, openURLInView } from 'utils';
+import { colors, fonts, getHeaderForceInset } from 'config';
 
-const selectors = createStructuredSelector({
-  organization: getOrganization,
-  repositories: getOrganizationRepositories,
-  members: getOrganizationMembers,
-  isPendingOrg: getOrganizationIsPendingOrg,
-  isPendingRepos: getOrganizationIsPendingRepos,
-  isPendingMembers: getOrganizationIsPendingMembers,
-  language: getAuthLanguage,
-});
+const StyledSafeAreaView = styled(SafeAreaView).attrs({
+  forceInset: getHeaderForceInset('Organization'),
+})`
+  background-color: ${colors.primaryDark};
+`;
 
-const actionCreators = {
-  fetchOrganizations,
-  fetchOrganizationMembers,
-};
-
-const actions = dispatch => bindActionCreators(actionCreators, dispatch);
-
-const styles = StyleSheet.create({
-  listTitle: {
-    color: colors.black,
-    ...fonts.fontPrimary,
-  },
-  listSubTitle: {
+const DescriptionListItem = styled(ListItem).attrs({
+  subtitleStyle: {
     color: colors.greyDark,
     ...fonts.fontPrimary,
   },
-});
+  subtitleNumberOfLines: 0,
+})``;
+
+const LoadingMembersContainer = styled.View`
+  padding: 5px;
+`;
 
 class OrganizationProfile extends Component {
   props: {
-    fetchOrganizations: Function,
-    // getOrgReposByDispatch: Function,
-    fetchOrganizationMembers: Function,
-    organization: Object,
-    // repositories: Array,
-    members: Array,
-    isPendingOrg: boolean,
-    // isPendingRepos: boolean,
-    isPendingMembers: boolean,
+    org: Object,
+    orgId: String,
+    orgMembers: Array,
+    orgMembersPagination: Object,
     navigation: Object,
-    language: string,
+    locale: string,
+    getOrgById: Function,
+    getOrgMembers: Function,
   };
 
   state: {
@@ -89,93 +60,169 @@ class OrganizationProfile extends Component {
   }
 
   componentDidMount() {
-    const organization = this.props.navigation.state.params.organization;
+    const { org, orgId, getOrgById, getOrgMembers } = this.props;
 
-    this.props.fetchOrganizations(organization.login);
-    this.props.fetchOrganizationMembers(organization.login);
+    if (!org.name) {
+      getOrgById(orgId);
+    }
+    getOrgMembers(orgId);
   }
 
-  getOrgData = () => {
-    const organization = this.props.navigation.state.params.organization;
+  componentWillReceiveProps() {
+    this.setState({ refreshing: false });
+  }
 
+  refresh = () => {
     this.setState({ refreshing: true });
-    Promise.all([
-      this.props.fetchOrganizations(organization.login),
-      this.props.fetchOrganizationMembers(organization.login),
-    ]).then(() => {
-      this.setState({ refreshing: false });
-    });
+    const { orgId, getOrgById, getOrgMembers } = this.props;
+
+    getOrgById(orgId);
+    getOrgMembers(orgId, { forceRefresh: true });
+  };
+
+  showMenuActionSheet = () => {
+    this.ActionSheet.show();
+  };
+
+  handleActionSheetPress = index => {
+    if (index === 0) {
+      openURLInView(this.props.org.html_url);
+    }
+  };
+
+  renderLoadingMembers = () => {
+    if (this.props.orgMembersPagination.nextPageUrl === null) {
+      return null;
+    }
+
+    return (
+      <LoadingMembersContainer>
+        <ActivityIndicator animating size="small" />
+      </LoadingMembersContainer>
+    );
   };
 
   render() {
     const {
-      organization,
-      members,
-      isPendingOrg,
-      isPendingMembers,
+      org,
+      orgId,
+      orgMembers,
+      orgMembersPagination,
       navigation,
-      language,
+      locale,
     } = this.props;
     const { refreshing } = this.state;
     const initialOrganization = this.props.navigation.state.params.organization;
+    const organizationActions = [t('Open in Browser', locale)];
+
+    const isPendingMembers =
+      orgMembers.length === 0 && orgMembersPagination.isFetching;
 
     return (
       <ViewContainer>
+        <StyledSafeAreaView />
+
         <ParallaxScroll
-          renderContent={() =>
+          renderContent={() => (
             <UserProfile
               type="org"
               initialUser={initialOrganization}
               user={
-                initialOrganization.login === organization.login
-                  ? organization
+                initialOrganization.login === org.login
+                  ? org
                   : initialOrganization
               }
               navigation={navigation}
-            />}
-          refreshControl={
-            <RefreshControl
-              onRefresh={this.getOrgData}
-              refreshing={refreshing}
             />
+          )}
+          refreshControl={
+            <RefreshControl onRefresh={this.refresh} refreshing={refreshing} />
           }
-          stickyTitle={organization.name}
+          stickyTitle={org.name}
           navigateBack
           navigation={navigation}
+          showMenu
+          menuAction={() => this.showMenuActionSheet()}
         >
-          {isPendingMembers &&
-            <LoadingMembersList
-              title={translate('organization.main.membersTitle', language)}
-            />}
+          {isPendingMembers && (
+            <LoadingMembersList title={t('MEMBERS', locale)} />
+          )}
 
-          {!isPendingMembers &&
+          {!isPendingMembers && (
             <MembersList
-              title={translate('organization.main.membersTitle', language)}
-              members={members}
+              title={t('MEMBERS', locale)}
+              members={orgMembers}
+              noMembersMessage={t('No members found', locale)}
               navigation={navigation}
-            />}
+              onEndReached={() =>
+                this.props.getOrgMembers(orgId, { loadMore: true })
+              }
+              onEndReachedThreshold={0.5}
+              ListFooterComponent={this.renderLoadingMembers}
+            />
+          )}
 
-          {!!organization.description &&
-            organization.description !== '' &&
-            <SectionList
-              title={translate('organization.main.descriptionTitle', language)}
-            >
-              <ListItem
-                subtitle={emojifyText(organization.description)}
-                subtitleStyle={styles.listSubTitle}
-                hideChevron
-              />
-            </SectionList>}
+          {!!org.description &&
+            org.description !== '' && (
+              <SectionList title={t('DESCRIPTION', locale)}>
+                <DescriptionListItem
+                  subtitle={emojifyText(org.description)}
+                  hideChevron
+                />
+              </SectionList>
+            )}
 
-          {!isPendingOrg &&
-            <EntityInfo entity={organization} navigation={navigation} />}
+          {org && (
+            <EntityInfo entity={org} navigation={navigation} locale={locale} />
+          )}
         </ParallaxScroll>
+
+        <ActionSheet
+          ref={o => {
+            this.ActionSheet = o;
+          }}
+          title={t('Organization Actions', locale)}
+          options={[...organizationActions, t('Cancel', locale)]}
+          cancelButtonIndex={1}
+          onPress={this.handleActionSheetPress}
+        />
       </ViewContainer>
     );
   }
 }
 
+const mapStateToProps = (state, ownProps) => {
+  const {
+    auth: { user, locale },
+    pagination: { ORGS_GET_MEMBERS },
+    entities: { orgs, users },
+  } = state;
+
+  const orgId = ownProps.navigation.state.params.organization.login;
+  const org = orgs[orgId] || ownProps.navigation.state.params.organization;
+
+  const orgMembersPagination = ORGS_GET_MEMBERS[orgId] || {
+    ids: [],
+    isFetching: true,
+  };
+  const orgMembers = orgMembersPagination.ids.map(id => users[id]);
+
+  return {
+    user,
+    org,
+    orgId,
+    orgMembers,
+    orgMembersPagination,
+    locale,
+  };
+};
+
+const mapDispatchToProps = {
+  getOrgById: RestClient.orgs.getById,
+  getOrgMembers: RestClient.orgs.getMembers,
+};
+
 export const OrganizationProfileScreen = connect(
-  selectors,
-  actions
+  mapStateToProps,
+  mapDispatchToProps
 )(OrganizationProfile);

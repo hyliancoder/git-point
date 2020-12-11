@@ -1,19 +1,28 @@
 import React, { Component } from 'react';
-import { WebView, StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
 import { connect } from 'react-redux';
+import { bindActionCreators } from 'redux';
+import { Icon } from 'react-native-elements';
+import ActionSheet from 'react-native-actionsheet';
 
-import { ViewContainer, LoadingContainer } from 'components';
-import { normalize } from 'config';
+import { MarkdownWebView, ViewContainer, LoadingContainer } from 'components';
+import { normalize, colors } from 'config';
+import { t, openURLInView } from 'utils';
 import { getReadMe } from '../repository.action';
 
 const mapStateToProps = state => ({
   readMe: state.repository.readMe,
   isPendingReadMe: state.repository.isPendingReadMe,
+  locale: state.auth.locale,
 });
 
-const mapDispatchToProps = dispatch => ({
-  getReadMeByDispatch: (user, repoName) => dispatch(getReadMe(user, repoName)),
-});
+const mapDispatchToProps = dispatch =>
+  bindActionCreators(
+    {
+      getReadMe,
+    },
+    dispatch
+  );
 
 const styles = StyleSheet.create({
   textContainer: {
@@ -28,18 +37,39 @@ const styles = StyleSheet.create({
 });
 
 class ReadMe extends Component {
+  static navigationOptions = ({ navigation }) => {
+    const { state } = navigation;
+
+    return {
+      headerRight: (
+        <Icon
+          name="ellipsis-h"
+          color={colors.primaryDark}
+          type="font-awesome"
+          containerStyle={{ marginRight: 10 }}
+          underlayColor={colors.transparent}
+          onPress={state.params.showActionSheet}
+        />
+      ),
+    };
+  };
+
   props: {
-    getReadMeByDispatch: Function,
+    getReadMe: Function,
     readMe: string,
     isPendingReadMe: boolean,
     navigation: Object,
+    locale: string,
   };
 
   componentDidMount() {
     const repo = this.props.navigation.state.params.repository;
 
-    this.props.getReadMeByDispatch(repo.owner.login, repo.name);
+    this.props.getReadMe(repo.owner.login, repo.name);
+    this.props.navigation.setParams({ showActionSheet: this.showActionSheet });
   }
+
+  showActionSheet = () => this.ActionSheet.show();
 
   isJsonString = str => {
     try {
@@ -51,25 +81,55 @@ class ReadMe extends Component {
     return true;
   };
 
+  handleActionSheetPress = index => {
+    const repo = this.props.navigation.state.params.repository;
+
+    if (index === 0) {
+      openURLInView(repo.html_url);
+    }
+  };
+
   render() {
-    const { readMe, isPendingReadMe } = this.props;
+    const { readMe, isPendingReadMe, locale } = this.props;
     let noReadMe = null;
 
     if (this.isJsonString(readMe)) {
       noReadMe = JSON.parse(readMe).message;
     }
+    const readmeActions = [t('Open in Browser', locale)];
 
     return (
       <ViewContainer>
-        {isPendingReadMe &&
-          <LoadingContainer animating={isPendingReadMe} center />}
-        {!isPendingReadMe && !noReadMe && <WebView source={{ html: readMe }} />}
-
+        {isPendingReadMe && (
+          <LoadingContainer animating={isPendingReadMe} center />
+        )}
         {!isPendingReadMe &&
-          noReadMe &&
-          <View style={styles.textContainer}>
-            <Text style={styles.noReadMeTitle}>No README.md found</Text>
-          </View>}
+          !noReadMe && (
+            <MarkdownWebView
+              html={readMe}
+              baseUrl={`${
+                this.props.navigation.state.params.repository.html_url
+              }/raw/master/`}
+            />
+          )}
+        {!isPendingReadMe &&
+          noReadMe && (
+            <View style={styles.textContainer}>
+              <Text style={styles.noReadMeTitle}>
+                {t('No README.md found', locale)}
+              </Text>
+            </View>
+          )}
+
+        <ActionSheet
+          ref={o => {
+            this.ActionSheet = o;
+          }}
+          title={t('README Actions', locale)}
+          options={[...readmeActions, t('Cancel', locale)]}
+          cancelButtonIndex={1}
+          onPress={this.handleActionSheetPress}
+        />
       </ViewContainer>
     );
   }

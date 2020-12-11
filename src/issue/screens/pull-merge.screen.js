@@ -1,39 +1,28 @@
+/* eslint-disable no-shadow */
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
+import { bindActionCreators } from 'redux';
 import { View, ScrollView, StyleSheet, TextInput, Alert } from 'react-native';
 import { ListItem, Icon } from 'react-native-elements';
 import ActionSheet from 'react-native-actionsheet';
 
 import { ViewContainer, SectionList } from 'components';
-import { translate } from 'utils';
+import { t } from 'utils';
 import { colors, fonts, normalize } from 'config';
 import { mergePullRequest } from '../issue.action';
 
 const mapStateToProps = state => ({
-  language: state.auth.language,
-  repository: state.repository.repository,
-  issue: state.issue.issue,
+  locale: state.auth.locale,
   isPendingMerging: state.repository.isPendingMerging,
 });
 
-const mapDispatchToProps = dispatch => ({
-  mergePullRequestByDispatch: (
-    repoFullName,
-    issueNum,
-    commitTitle,
-    commitMessage,
-    mergeMethod
-  ) =>
-    dispatch(
-      mergePullRequest(
-        repoFullName,
-        issueNum,
-        commitTitle,
-        commitMessage,
-        mergeMethod
-      )
-    ),
-});
+const mapDispatchToProps = dispatch =>
+  bindActionCreators(
+    {
+      mergePullRequest,
+    },
+    dispatch
+  );
 
 const styles = StyleSheet.create({
   listItemTitle: {
@@ -45,7 +34,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 15,
     flex: 1,
     color: colors.black,
-    ...fonts.fontPrimaryLight,
+    ...fonts.fontPrimary,
   },
   mergeActionTitle: {
     color: colors.green,
@@ -69,10 +58,8 @@ const styles = StyleSheet.create({
 
 class PullMerge extends Component {
   props: {
-    mergePullRequestByDispatch: Function,
-    language: string,
-    repository: Object,
-    issue: Object,
+    mergePullRequest: Function,
+    locale: string,
     // isPendingMerging: boolean,
     navigation: Object,
   };
@@ -83,8 +70,8 @@ class PullMerge extends Component {
     commitMessage: string,
   };
 
-  constructor() {
-    super();
+  constructor(props) {
+    super(props);
 
     this.state = {
       mergeMethod: 0,
@@ -96,12 +83,9 @@ class PullMerge extends Component {
   }
 
   mergeMethodMessages = () => {
-    const { language } = this.props;
+    const { locale } = this.props;
 
-    return [
-      translate('issue.pullMerge.createMergeCommit', language),
-      translate('issue.pullMerge.squashAndMerge', language),
-    ];
+    return [t('Create a merge commit', locale), t('Squash and merge', locale)];
   };
 
   showActionSheet = () => {
@@ -117,27 +101,17 @@ class PullMerge extends Component {
   };
 
   mergePullRequest = () => {
-    const {
-      repository,
-      issue,
-      mergePullRequestByDispatch,
-      language,
-      navigation,
-    } = this.props;
+    const { mergePullRequest, locale, navigation } = this.props;
+    const { issue, repository } = navigation.state.params;
     const { mergeMethod, commitTitle, commitMessage } = this.state;
-    const mergeMethodTypes = [
-      translate('issue.pullMerge.merge', language),
-      translate('issue.pullMerge.squash', language),
-    ];
+    const mergeMethodTypes = [t('merge', locale), t('squash', locale)];
 
     if (commitTitle === '') {
-      Alert.alert(
-        translate('issue.pullMerge.missingTitleAlert', language),
-        null,
-        [{ text: translate('common.ok', language) }]
-      );
+      Alert.alert(t('You need to have a commit title!', locale), null, [
+        { text: t('OK', locale) },
+      ]);
     } else {
-      mergePullRequestByDispatch(
+      mergePullRequest(
         repository.full_name,
         issue.number,
         commitTitle,
@@ -150,24 +124,23 @@ class PullMerge extends Component {
   };
 
   render() {
-    const { language } = this.props;
+    const { locale } = this.props;
     const { mergeMethod, commitTitle, commitMessage } = this.state;
 
     return (
       <ViewContainer>
         <ScrollView>
-          <SectionList
-            title={translate('issue.pullMerge.commitTitle', language)}
-          >
+          <SectionList title={t('Commit Title', locale)}>
             <TextInput
-              underlineColorAndroid={'transparent'}
-              placeholder={translate('issue.pullMerge.writeATitle', language)}
+              underlineColorAndroid="transparent"
+              placeholder={t('Write a title for your commit here', locale)}
               blurOnSubmit
               multiline
               onContentSizeChange={event =>
                 this.setState({
                   commitTitleHeight: event.nativeEvent.contentSize.height,
-                })}
+                })
+              }
               onChangeText={text => this.setState({ commitTitle: text })}
               placeholderTextColor={colors.grey}
               style={[
@@ -178,19 +151,18 @@ class PullMerge extends Component {
             />
           </SectionList>
 
-          <SectionList
-            title={translate('issue.pullMerge.commitMessage', language)}
-          >
+          <SectionList title={t('Commit Message', locale)}>
             <TextInput
-              underlineColorAndroid={'transparent'}
-              placeholder={translate('issue.pullMerge.writeAMessage', language)}
+              underlineColorAndroid="transparent"
+              placeholder={t('Write a message for your commit here', locale)}
               blurOnSubmit
               multiline
               onChangeText={text => this.setState({ commitMessage: text })}
               onContentSizeChange={event =>
                 this.setState({
                   commitMessageHeight: event.nativeEvent.contentSize.height,
-                })}
+                })
+              }
               placeholderTextColor={colors.grey}
               style={[
                 styles.textInput,
@@ -200,7 +172,7 @@ class PullMerge extends Component {
             />
           </SectionList>
 
-          <SectionList title={translate('issue.pullMerge.mergeType', language)}>
+          <SectionList title={t('Merge Type', locale)}>
             <View style={styles.mergeListItemContainer}>
               <View style={styles.listItemContainer}>
                 <ListItem
@@ -229,11 +201,8 @@ class PullMerge extends Component {
           ref={o => {
             this.ActionSheet = o;
           }}
-          title={translate('issue.pullMerge.changeMergeType', language)}
-          options={[
-            ...this.mergeMethodMessages(),
-            translate('common.cancel', language),
-          ]}
+          title={t('Change Merge Type', locale)}
+          options={[...this.mergeMethodMessages(), t('Cancel', locale)]}
           cancelButtonIndex={this.mergeMethodMessages().length}
           onPress={this.handlePress}
         />

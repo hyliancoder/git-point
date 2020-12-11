@@ -1,3 +1,4 @@
+/* eslint-disable no-shadow */
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import {
@@ -13,31 +14,50 @@ import {
   ViewContainer,
   IssueListItem,
   LoadingContainer,
+  LoadingCommonItem,
   SearchBar,
 } from 'components';
 
-import { translate } from 'utils';
+import { t } from 'utils';
 import { colors, fonts, normalize } from 'config';
-import {
-  searchOpenRepoPulls,
-  searchClosedRepoPulls,
-} from '../repository.action';
+import { RestClient } from 'api';
 
-const mapStateToProps = state => ({
-  language: state.auth.language,
-  repository: state.repository.repository,
-  searchedOpenPulls: state.repository.searchedOpenPulls,
-  searchedClosedPulls: state.repository.searchedClosedPulls,
-  isPendingSearchOpenPulls: state.repository.isPendingSearchOpenPulls,
-  isPendingSearchClosedPulls: state.repository.isPendingSearchClosedPulls,
-});
+const SearchTypes = {
+  OPEN: 0,
+  CLOSED: 1,
+};
+const getFinalQuery = (searchType, query, repoFullName) =>
+  `${query}+repo:${repoFullName}+type:pr+state:${
+    searchType === SearchTypes.OPEN ? 'open' : 'closed'
+  }&sort=created`;
 
-const mapDispatchToProps = dispatch => ({
-  searchOpenRepoPullsByDispatch: (query, repo) =>
-    dispatch(searchOpenRepoPulls(query, repo)),
-  searchClosedRepoPullsByDispatch: (query, repo) =>
-    dispatch(searchClosedRepoPulls(query, repo)),
-});
+const mapStateToProps = (state, ownProps) => {
+  const {
+    auth: { locale },
+    entities: { gqlRepos, issues },
+    pagination: { SEARCH_ISSUES },
+  } = state;
+
+  const { searchType, query, repository } = ownProps.navigation.state.params;
+  const repoId = repository.nameWithOwner;
+
+  const pullsPagination = SEARCH_ISSUES[
+    getFinalQuery(searchType, query, repoId)
+  ] || {
+    ids: [],
+  };
+
+  return {
+    locale,
+    repository: gqlRepos[repoId],
+    pullsPagination,
+    pulls: pullsPagination.ids.map(id => issues[id]),
+  };
+};
+
+const mapDispatchToProps = {
+  searchIssues: RestClient.search.issues,
+};
 
 const styles = StyleSheet.create({
   header: {
@@ -98,61 +118,39 @@ const styles = StyleSheet.create({
 
 class PullList extends Component {
   props: {
-    language: string,
+    locale: string,
     repository: Object,
-    searchedOpenPulls: Array,
-    searchedClosedPulls: Array,
-    isPendingSearchOpenPulls: boolean,
-    isPendingSearchClosedPulls: boolean,
-    searchOpenRepoPullsByDispatch: Function,
-    searchClosedRepoPullsByDispatch: Function,
+    pullsPagination: Object,
+    pulls: Array,
+    searchIssues: Function,
     navigation: Object,
   };
 
   state: {
-    query: string,
-    searchType: number,
     searchStart: boolean,
     searchFocus: boolean,
   };
 
-  constructor() {
-    super();
+  constructor(props) {
+    super(props);
 
     this.state = {
-      query: '',
-      searchType: 0,
       searchStart: false,
       searchFocus: false,
     };
-
-    this.switchQueryType = this.switchQueryType.bind(this);
-    this.search = this.search.bind(this);
-    this.getList = this.getList.bind(this);
   }
 
-  getList = () => {
-    const { searchedOpenPulls, searchedClosedPulls, navigation } = this.props;
-    const { searchType, searchStart } = this.state;
+  componentDidMount() {
+    const { query, searchType } = this.props.navigation.state.params;
 
-    if (searchStart) {
-      return searchType === 0 ? searchedOpenPulls : searchedClosedPulls;
-    }
+    this.search(query, searchType);
+  }
 
-    return searchType === 0
-      ? navigation.state.params.issues.filter(issue => issue.state === 'open')
-      : navigation.state.params.issues.filter(
-          issue => issue.state === 'closed'
-        );
-  };
+  switchQueryType = selectedType => {
+    const { query, searchType } = this.props.navigation.state.params;
 
-  switchQueryType(selectedType) {
-    if (this.state.searchType !== selectedType) {
-      this.setState({
-        searchType: selectedType,
-      });
-
-      this.search(this.state.query, selectedType);
+    if (searchType !== selectedType) {
+      this.search(query, selectedType);
     } else {
       this.pullList.scrollToOffset({
         x: 0,
@@ -160,53 +158,50 @@ class PullList extends Component {
         animated: false,
       });
     }
-  }
+  };
 
-  search(query, selectedType = null) {
-    const {
-      searchOpenRepoPullsByDispatch,
-      searchClosedRepoPullsByDispatch,
-      repository,
-    } = this.props;
+  search = (query, selectedType, params) => {
+    const { repository, navigation, searchIssues } = this.props;
+    const q = getFinalQuery(selectedType, query, repository.nameWithOwner);
 
-    const selectedSearchType =
-      selectedType !== null ? selectedType : this.state.searchType;
-
-    if (query !== '') {
-      this.setState({
-        searchStart: true,
-        query,
-      });
-
-      if (selectedSearchType === 0) {
-        searchOpenRepoPullsByDispatch(query, repository.full_name);
-      } else {
-        searchClosedRepoPullsByDispatch(query, repository.full_name);
-      }
-    }
-  }
+    navigation.setParams({
+      query,
+      searchType: selectedType,
+    });
+    this.setState({
+      searchStart: true,
+    });
+    searchIssues(q, params);
+  };
 
   keyExtractor = item => {
     return item.id;
   };
 
-  renderItem = ({ item }) =>
+  renderItem = ({ item }) => (
     <IssueListItem
-      type={this.props.navigation.state.params.type}
+      type="pull"
       issue={item}
       navigation={this.props.navigation}
-      language={this.props.language}
-    />;
+      locale={this.props.locale}
+    />
+  );
+
+  renderFooter = () => {
+    return this.props.pullsPagination.nextPageUrl ? (
+      <LoadingCommonItem />
+    ) : null;
+  };
 
   render() {
     const {
-      language,
-      searchedOpenPulls,
-      searchedClosedPulls,
-      isPendingSearchOpenPulls,
-      isPendingSearchClosedPulls,
+      locale,
+      pullsPagination: { isFetching },
+      pulls,
+      navigation,
     } = this.props;
-    const { query, searchType, searchStart, searchFocus } = this.state;
+    const { query, searchType } = navigation.state.params;
+    const { searchStart, searchFocus } = this.state;
 
     return (
       <ViewContainer>
@@ -218,10 +213,14 @@ class PullList extends Component {
                 textFieldBackgroundColor={colors.greyLight}
                 showsCancelButton={searchFocus}
                 onFocus={() => this.setState({ searchFocus: true })}
-                onCancelButtonPress={() =>
-                  this.setState({ searchStart: false, query: '' })}
+                onCancelButtonPress={() => {
+                  navigation.setParams({
+                    query: '',
+                  });
+                  this.setState({ searchStart: false });
+                }}
                 onSearchButtonPress={text => {
-                  this.search(text);
+                  this.search(text, searchType);
                 }}
                 hideBackground
               />
@@ -231,66 +230,57 @@ class PullList extends Component {
           <ButtonGroup
             onPress={this.switchQueryType}
             selectedIndex={searchType}
-            buttons={[
-              translate('repository.pullList.openButton', language),
-              translate('repository.pullList.closedButton', language),
-            ]}
+            buttons={[t('Open', locale), t('Closed', locale)]}
             textStyle={styles.buttonGroupText}
             selectedTextStyle={styles.buttonGroupTextSelected}
             containerStyle={styles.buttonGroupContainer}
           />
         </View>
 
-        {isPendingSearchOpenPulls &&
-          searchType === 0 &&
-          <LoadingContainer
-            animating={isPendingSearchOpenPulls && searchType === 0}
-            text={translate('repository.pullList.searchingMessage', language, {
-              query,
-            })}
-            style={styles.marginSpacing}
-          />}
+        {isFetching &&
+          pulls.length === 0 && (
+            <LoadingContainer
+              animating
+              center
+              text={
+                query.length > 0
+                  ? t('Searching for {query}', locale, {
+                      query,
+                    })
+                  : ''
+              }
+              style={styles.marginSpacing}
+            />
+          )}
 
-        {isPendingSearchClosedPulls &&
-          searchType === 1 &&
-          <LoadingContainer
-            animating={isPendingSearchClosedPulls && searchType === 1}
-            text={translate('repository.pullList.searchingMessage', language, {
-              query,
-            })}
-            style={styles.marginSpacing}
-          />}
-
-        {this.getList().length > 0 &&
+        {pulls.length > 0 && (
           <FlatList
             ref={ref => {
               this.pullList = ref;
             }}
             removeClippedSubviews={false}
-            data={this.getList()}
+            data={pulls}
             keyExtractor={this.keyExtractor}
             renderItem={this.renderItem}
-          />}
+            onEndReached={() =>
+              this.search(query, searchType, { loadMore: true })
+            }
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={this.renderFooter}
+          />
+        )}
 
         {searchStart &&
-          !isPendingSearchOpenPulls &&
-          searchedOpenPulls.length === 0 &&
-          searchType === 0 &&
-          <View style={styles.marginSpacing}>
-            <Text style={styles.searchTitle}>
-              {translate('repository.pullList.noOpenPulls', language)}
-            </Text>
-          </View>}
-
-        {searchStart &&
-          !isPendingSearchClosedPulls &&
-          searchedClosedPulls.length === 0 &&
-          searchType === 1 &&
-          <View style={styles.marginSpacing}>
-            <Text style={styles.searchTitle}>
-              {translate('repository.pullList.noOpenPulls', language)}
-            </Text>
-          </View>}
+          !isFetching &&
+          pulls.length === 0 && (
+            <View style={styles.marginSpacing}>
+              <Text style={styles.searchTitle}>
+                {searchType === SearchTypes.OPEN
+                  ? t('No open pull requests found!', locale)
+                  : t('No closed pull requests found!', locale)}
+              </Text>
+            </View>
+          )}
       </ViewContainer>
     );
   }

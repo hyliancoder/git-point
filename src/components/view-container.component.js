@@ -1,30 +1,23 @@
 import React from 'react';
-import { StyleSheet, StatusBar, View } from 'react-native';
+import styled from 'styled-components';
 
 import { colors } from 'config';
 
 type Props = {
-  barColor: string,
   children?: React.Element<*>,
 };
 
-const styles = StyleSheet.create({
-  viewContainer: {
-    flex: 1,
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    backgroundColor: colors.white,
-  },
-});
+export const StyledViewContainer = styled.View`
+  flex: 1;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  background-color: ${colors.white};
+`;
 
-export const ViewContainer = ({ barColor, children }: Props) =>
-  <View style={styles.viewContainer}>
-    <StatusBar
-      barStyle={barColor === 'light' ? 'light-content' : 'dark-content'}
-    />
-    {children}
-  </View>;
+export const ViewContainer = ({ children }: Props) => (
+  <StyledViewContainer>{children}</StyledViewContainer>
+);
 
 ViewContainer.defaultProps = {
   children: null,

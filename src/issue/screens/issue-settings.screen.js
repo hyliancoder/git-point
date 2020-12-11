@@ -1,5 +1,6 @@
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
+import { bindActionCreators } from 'redux';
 import { ScrollView, StyleSheet } from 'react-native';
 import { ListItem } from 'react-native-elements';
 import ActionSheet from 'react-native-actionsheet';
@@ -10,29 +11,30 @@ import {
   UserListItem,
   LabelListItem,
 } from 'components';
-import { translate } from 'utils';
+import { emojifyText, t, openURLInView } from 'utils';
 import { colors, fonts } from 'config';
+import { v3 } from 'api';
 import { getLabels } from 'repository';
 import { editIssue, changeIssueLockStatus } from '../issue.action';
 
 const mapStateToProps = state => ({
-  language: state.auth.language,
+  locale: state.auth.locale,
   authUser: state.auth.user,
-  repository: state.repository.repository,
   labels: state.repository.labels,
-  issue: state.issue.issue,
   isMerged: state.issue.isMerged,
   isEditingIssue: state.issue.isEditingIssue,
   isPendingLabels: state.repository.isPendingLabels,
 });
 
-const mapDispatchToProps = dispatch => ({
-  editIssue: (owner, repoName, issueNum, editParams, updateParams) =>
-    dispatch(editIssue(owner, repoName, issueNum, editParams, updateParams)),
-  changeIssueLockStatus: (owner, repoName, issueNum, currentStatus) =>
-    dispatch(changeIssueLockStatus(owner, repoName, issueNum, currentStatus)),
-  getLabels: url => dispatch(getLabels(url)),
-});
+const mapDispatchToProps = dispatch =>
+  bindActionCreators(
+    {
+      editIssue,
+      changeIssueLockStatus,
+      getLabels,
+    },
+    dispatch
+  );
 
 const styles = StyleSheet.create({
   listItemTitle: {
@@ -54,11 +56,9 @@ class IssueSettings extends Component {
     editIssue: Function,
     changeIssueLockStatus: Function,
     getLabels: Function,
-    language: string,
+    locale: string,
     authUser: Object,
-    repository: Object,
     labels: Array,
-    issue: Object,
     isMerged: boolean,
     // isEditingIssue: boolean,
     isPendingLabels: boolean,
@@ -67,7 +67,9 @@ class IssueSettings extends Component {
 
   componentDidMount() {
     this.props.getLabels(
-      this.props.repository.labels_url.replace('{/name}', '')
+      `${v3.root}/repos/${
+        this.props.navigation.state.params.repository.full_name
+      }/labels`
     );
   }
 
@@ -86,7 +88,8 @@ class IssueSettings extends Component {
   };
 
   handleIssueActionPress = index => {
-    const { issue, navigation } = this.props;
+    const { navigation } = this.props;
+    const { issue } = navigation.state.params;
     const newState = issue.state === 'open' ? 'close' : 'open';
 
     if (index === 0) {
@@ -97,7 +100,7 @@ class IssueSettings extends Component {
   };
 
   handleLockIssueActionPress = index => {
-    const { issue, repository } = this.props;
+    const { issue, repository } = this.props.navigation.state.params;
     const repoName = repository.name;
     const owner = repository.owner.login;
 
@@ -112,7 +115,8 @@ class IssueSettings extends Component {
   };
 
   handleAddLabelActionPress = index => {
-    const { issue, labels } = this.props;
+    const { navigation, labels } = this.props;
+    const { issue } = navigation.state.params;
     const labelChoices = [...labels.map(label => label.name)];
 
     if (
@@ -132,7 +136,7 @@ class IssueSettings extends Component {
   };
 
   editIssue = (editParams, stateChangeParams) => {
-    const { issue, repository } = this.props;
+    const { issue, repository } = this.props.navigation.state.params;
     const repoName = repository.name;
     const owner = repository.owner.login;
     const updateStateParams = stateChangeParams || editParams;
@@ -146,28 +150,32 @@ class IssueSettings extends Component {
     );
   };
 
+  openURLInBrowser = () =>
+    openURLInView(this.props.navigation.state.params.issue.html_url);
+
   render() {
-    const { issue, isMerged, language, authUser, navigation } = this.props;
+    const { isMerged, locale, authUser, navigation } = this.props;
+    const { issue } = navigation.state.params;
     const issueType = issue.pull_request
-      ? translate('issue.settings.pullRequestType', language)
-      : translate('issue.settings.issueType', language);
+      ? t('Pull Request', locale)
+      : t('Issue', locale);
 
     return (
       <ViewContainer>
         <ScrollView>
           <SectionList
             showButton
-            buttonTitle={translate('issue.settings.applyLabelButton', language)}
+            buttonTitle={t('Apply Label', locale)}
             buttonAction={this.showAddLabelActionSheet}
             style={{
               borderBottomWidth: 1,
               borderBottomColor: colors.grey,
             }}
             noItems={issue.labels.length === 0}
-            noItemsMessage={translate('issue.settings.noneMessage', language)}
-            title={translate('issue.settings.labelsTitle', language)}
+            noItemsMessage={t('None yet', locale)}
+            title={t('LABELS', locale)}
           >
-            {issue.labels.map(item =>
+            {issue.labels.map(item => (
               <LabelListItem
                 label={item}
                 key={item.id}
@@ -187,9 +195,10 @@ class IssueSettings extends Component {
                         label => label.name !== labelToRemove.name
                       ),
                     }
-                  )}
+                  )
+                }
               />
-            )}
+            ))}
           </SectionList>
 
           <SectionList
@@ -198,10 +207,7 @@ class IssueSettings extends Component {
                 assignee => assignee.login === authUser.login
               )
             }
-            buttonTitle={translate(
-              'issue.settings.assignYourselfButton',
-              language
-            )}
+            buttonTitle={t('Assign Yourself', locale)}
             buttonAction={() =>
               this.editIssue(
                 {
@@ -211,12 +217,13 @@ class IssueSettings extends Component {
                   ],
                 },
                 { assignees: [...issue.assignees, authUser] }
-              )}
+              )
+            }
             noItems={issue.assignees.length === 0}
-            noItemsMessage={translate('issue.settings.noneMessage', language)}
-            title={translate('issue.settings.assigneesTitle', language)}
+            noItemsMessage={t('None yet', locale)}
+            title={t('ASSIGNEES', locale)}
           >
-            {issue.assignees.map(item =>
+            {issue.assignees.map(item => (
               <UserListItem
                 user={item}
                 key={item.id}
@@ -236,21 +243,20 @@ class IssueSettings extends Component {
                         assignee => assignee.login !== userToRemove
                       ),
                     }
-                  )}
+                  )
+                }
               />
-            )}
+            ))}
           </SectionList>
 
-          <SectionList
-            title={translate('issue.settings.actionsTitle', language)}
-          >
+          <SectionList title={t('ACTIONS', locale)}>
             <ListItem
               title={
                 issue.locked
-                  ? translate('issue.settings.unlockIssue', language, {
+                  ? t('Unlock {issueType}', locale, {
                       issueType,
                     })
-                  : translate('issue.settings.lockIssue', language, {
+                  : t('Lock {issueType}', locale, {
                       issueType,
                     })
               }
@@ -260,14 +266,14 @@ class IssueSettings extends Component {
               onPress={this.showLockIssueActionSheet}
             />
 
-            {!isMerged &&
+            {!isMerged && (
               <ListItem
                 title={
                   issue.state === 'open'
-                    ? translate('issue.settings.closeIssue', language, {
+                    ? t('Close {issueType}', locale, {
                         issueType,
                       })
-                    : translate('issue.settings.reopenIssue', language, {
+                    : t('Reopen {issueType}', locale, {
                         issueType,
                       })
                 }
@@ -279,7 +285,18 @@ class IssueSettings extends Component {
                     : styles.openActionTitle
                 }
                 onPress={this.showChangeIssueStateActionSheet}
-              />}
+              />
+            )}
+          </SectionList>
+
+          <SectionList>
+            <ListItem
+              title={t('Open in Browser', locale)}
+              hideChevron
+              underlayColor={colors.greyLight}
+              titleStyle={styles.listItemTitle}
+              onPress={this.openURLInBrowser}
+            />
           </SectionList>
         </ScrollView>
 
@@ -287,11 +304,8 @@ class IssueSettings extends Component {
           ref={o => {
             this.IssueActionSheet = o;
           }}
-          title={translate('issue.settings.areYouSurePrompt', language)}
-          options={[
-            translate('common.yes', language),
-            translate('common.cancel', language),
-          ]}
+          title={t('Are you sure?', locale)}
+          options={[t('Yes', locale), t('Cancel', locale)]}
           cancelButtonIndex={1}
           onPress={this.handleIssueActionPress}
         />
@@ -299,11 +313,8 @@ class IssueSettings extends Component {
           ref={o => {
             this.LockIssueActionSheet = o;
           }}
-          title={translate('issue.settings.areYouSurePrompt', language)}
-          options={[
-            translate('common.yes', language),
-            translate('common.cancel', language),
-          ]}
+          title={t('Are you sure?', locale)}
+          options={[t('Yes', locale), t('Cancel', locale)]}
           cancelButtonIndex={1}
           onPress={this.handleLockIssueActionPress}
         />
@@ -311,10 +322,10 @@ class IssueSettings extends Component {
           ref={o => {
             this.AddLabelActionSheet = o;
           }}
-          title={translate('issue.settings.applyLabelTitle', language)}
+          title={t('Apply a label to this issue', locale)}
           options={[
-            ...this.props.labels.map(label => label.name),
-            translate('common.cancel', language),
+            ...this.props.labels.map(label => emojifyText(label.name)),
+            t('Cancel', locale),
           ]}
           cancelButtonIndex={this.props.labels.length}
           onPress={this.handleAddLabelActionPress}

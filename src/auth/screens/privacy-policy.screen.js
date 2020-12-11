@@ -1,43 +1,46 @@
 import React, { Component } from 'react';
-import { StyleSheet, ScrollView, View, Text } from 'react-native';
+import styled from 'styled-components';
+import { ScrollView } from 'react-native';
 
 import { ViewContainer } from 'components';
-import { translate } from 'utils';
+import { t } from 'utils';
 import { colors, fonts, normalize } from 'config';
-import { root as apiRoot } from 'api';
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 15,
-  },
-  title: {
-    fontSize: normalize(14),
-    color: colors.primaryDark,
-    ...fonts.fontPrimarySemiBold,
-    marginBottom: 15,
-  },
-  section: {
-    borderTopColor: colors.greyLight,
-    borderTopWidth: 3,
-    paddingVertical: 15,
-  },
-  sectionTitle: {
-    fontSize: normalize(12),
-    color: colors.primaryDark,
-    ...fonts.fontPrimarySemiBold,
-    marginBottom: 15,
-  },
-  text: {
-    fontSize: normalize(11),
-    color: colors.primaryDark,
-    ...fonts.fontPrimaryLight,
-    marginBottom: 15,
-  },
-  link: {
-    ...fonts.fontPrimarySemiBold,
-  },
-});
+const Container = styled.View`
+  flex: 1;
+  padding: 15px;
+`;
+
+const Title = styled.Text`
+  font-size: ${normalize(14)};
+  color: ${colors.primaryDark};
+  ${fonts.fontPrimarySemiBold};
+  margin-bottom: 15;
+`;
+
+const Section = styled.View`
+  border-top-color: ${colors.greyLight};
+  border-top-width: 3;
+  padding-vertical: 15;
+`;
+
+const SectionTitle = styled.Text`
+  font-size: ${normalize(12)};
+  color: ${colors.primaryDark};
+  ${fonts.fontPrimaryBold};
+  margin-bottom: 15;
+`;
+
+const StyledText = styled.Text`
+  font-size: ${normalize(12)};
+  color: ${colors.primaryDark};
+  ${fonts.fontPrimary};
+  margin-bottom: 15;
+`;
+
+const Link = styled.Text`
+  ${fonts.fontPrimarySemiBold};
+`;
 
 export class PrivacyPolicyScreen extends Component {
   props: {
@@ -46,87 +49,104 @@ export class PrivacyPolicyScreen extends Component {
 
   render() {
     const { navigation } = this.props;
-    const { language } = navigation.state.params.language;
+    const { locale } = navigation.state.params.locale;
 
     return (
       <ViewContainer>
         <ScrollView>
-          <View style={styles.container}>
-            <Text style={styles.title}>
-              {translate('auth.privacyPolicy.effectiveDate', language)}
-            </Text>
+          <Container>
+            <Title>{t('Last updated: July 15, 2017', locale)}</Title>
 
-            <View style={styles.section}>
-              <Text style={styles.text}>
-                {translate('auth.privacyPolicy.introduction', language)}
-              </Text>
-            </View>
+            <Section>
+              <StyledText>
+                {t(
+                  "We're glad you decided to use GitPoint. This Privacy Policy is here to inform you about what we do \u2014 and do not do \u2014 with our user's data.",
+                  locale
+                )}
+              </StyledText>
+            </Section>
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                {translate('auth.privacyPolicy.userDataTitle', language)}
-              </Text>
+            <Section>
+              <SectionTitle>{t('USER DATA', locale)}</SectionTitle>
 
-              <Text style={styles.text}>
-                {translate('auth.privacyPolicy.userData1', language)}
-              </Text>
+              <StyledText>
+                {t(
+                  "We do not do anything with your GitHub information. After authenticating, the user's OAuth token is persisted directly on their device storage. It is not possible for us to retrieve that information. We never view a user's access token nor store it whatsoever.",
+                  locale
+                )}
+              </StyledText>
 
-              <Text style={styles.text}>
-                {translate('auth.privacyPolicy.userData2', language)}
-              </Text>
-            </View>
+              <StyledText>
+                {t(
+                  "This means that in no way, shape or form do we ever view, use or share a user's GitHub data. If private data ever becomes visible at any point we will not record or view it. If it happens to be accidentally recorded, we will delete it immediately using secure erase methods. Again, we've set up authentication specifically so that this never happens.",
+                  locale
+                )}
+              </StyledText>
+            </Section>
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                {translate('auth.privacyPolicy.analyticsInfoTitle', language)}
-              </Text>
+            <Section>
+              <SectionTitle>{t('ANALYTICS INFORMATION', locale)}</SectionTitle>
 
-              <Text style={styles.text}>
-                {translate('auth.privacyPolicy.analyticsInfo1', language)}
-              </Text>
+              <StyledText>
+                {t(
+                  'We currently use Google Analytics and iTunes App Analytics to help us measure traffic and usage trends for the GitPoint. These tools collect information sent by your device including device and platform version, region and referrer. This information cannot reasonably be used to identify any particular individual user and no personal information is extracted.',
+                  locale
+                )}
+              </StyledText>
 
-              <Text style={styles.text}>
-                {translate('auth.privacyPolicy.analyticsInfo2', language)}
-              </Text>
-            </View>
+              <StyledText>
+                {t(
+                  "If we happen to include another third party platform to collect stack traces, error logs or more analytics information, we'll make sure that user data remains anonymized and encrypted.",
+                  locale
+                )}
+              </StyledText>
+            </Section>
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                {translate('auth.privacyPolicy.openSourceTitle', language)}
-              </Text>
+            <Section>
+              <SectionTitle>{t('OPEN SOURCE', locale)}</SectionTitle>
 
-              <Text style={styles.text}>
-                {translate('auth.privacyPolicy.openSource1', language)}
-              </Text>
+              <StyledText>
+                {t(
+                  'GitPoint is open source and the history of contributions to the platform will always be visible to the public.',
+                  locale
+                )}
+              </StyledText>
 
-              <Text style={styles.text}>
-                {translate('auth.privacyPolicy.openSource2', language)}
-              </Text>
-            </View>
+              <StyledText>
+                {t(
+                  'With each contribution to the app, code review is always performed to prevent anybody from including malicious code of any kind.',
+                  locale
+                )}
+              </StyledText>
+            </Section>
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                {translate('auth.privacyPolicy.contactTitle', language)}
-              </Text>
+            <Section>
+              <SectionTitle>{t('CONTACT', locale)}</SectionTitle>
 
-              <Text style={styles.text}>
-                {translate('auth.privacyPolicy.contact1', language)}
-              </Text>
+              <StyledText>
+                {t(
+                  'Thank you for reading our Privacy Policy. We hope you enjoy using GitPoint as much as we enjoyed building it.',
+                  locale
+                )}
+              </StyledText>
 
-              <Text style={styles.text}>
-                {translate('auth.privacyPolicy.contact2', language)}{' '}
-                <Text
-                  style={styles.link}
+              <StyledText>
+                {t(
+                  'If you have any questions about this Privacy Policy or GitPoint in general, please file an issue in the',
+                  locale
+                )}{' '}
+                <Link
                   onPress={() =>
                     navigation.navigate('Repository', {
-                      repositoryUrl: `${apiRoot}/repos/gitpoint/git-point`,
-                    })}
+                      repoId: 'gitpoint/git-point',
+                    })
+                  }
                 >
-                  {translate('auth.privacyPolicy.contactLink', language)}
-                </Text>
-              </Text>
-            </View>
-          </View>
+                  {t('GitPoint repository', locale)}
+                </Link>
+              </StyledText>
+            </Section>
+          </Container>
         </ScrollView>
       </ViewContainer>
     );

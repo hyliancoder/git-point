@@ -8,8 +8,9 @@ import {
 } from 'react-navigation';
 import { Icon } from 'react-native-elements';
 
-import { colors } from 'config';
-import { translate } from 'utils';
+import { NotificationIcon } from 'components';
+import { colors, getHeaderForceInset } from 'config';
+import { t } from 'utils';
 
 // Auth
 import {
@@ -20,12 +21,14 @@ import {
   EventsScreen,
   PrivacyPolicyScreen,
   UserOptionsScreen,
+  LanguageSettingsScreen,
 } from 'auth';
 
 // User
 import {
   ProfileScreen,
   RepositoryListScreen,
+  StarredRepositoryListScreen,
   FollowerListScreen,
   FollowingListScreen,
 } from 'user';
@@ -47,6 +50,8 @@ import {
   IssueListScreen,
   PullListScreen,
   PullDiffScreen,
+  CommitScreen,
+  CommitListScreen,
   ReadMeScreen,
 } from 'repository';
 
@@ -56,11 +61,18 @@ import {
   IssueSettingsScreen,
   NewIssueScreen,
   PullMergeScreen,
+  EditIssueCommentScreen,
 } from 'issue';
 
 const sharedRoutes = {
   RepositoryList: {
     screen: RepositoryListScreen,
+    navigationOptions: ({ navigation }) => ({
+      title: navigation.state.params.title,
+    }),
+  },
+  StarredRepositoryList: {
+    screen: StarredRepositoryListScreen,
     navigationOptions: ({ navigation }) => ({
       title: navigation.state.params.title,
     }),
@@ -130,14 +142,10 @@ const sharedRoutes = {
   Issue: {
     screen: IssueScreen,
     navigationOptions: ({ navigation }) => {
-      const issueNumberRegex = /issues\/([0-9]+)$/;
-      const { issue, issueURL, isPR, language } = navigation.state.params;
+      const issueNumberRegex = /issues\/([0-9]+)(#|$)/;
+      const { issue, issueURL, isPR, locale } = navigation.state.params;
       const number = issue ? issue.number : issueURL.match(issueNumberRegex)[1];
-      const langKey = isPR ? 'pullRequest' : 'issue';
-      const langTitle = translate(
-        `issue.main.screenTitles.${langKey}`,
-        language
-      );
+      const langTitle = isPR ? t('Pull Request', locale) : t('Issue', locale);
 
       return {
         title: `${langTitle} #${number}`,
@@ -154,6 +162,24 @@ const sharedRoutes = {
   },
   NewIssue: {
     screen: NewIssueScreen,
+    navigationOptions: ({ navigation }) => ({
+      title: navigation.state.params.title,
+    }),
+  },
+  CommitList: {
+    screen: CommitListScreen,
+    navigationOptions: ({ navigation }) => ({
+      title: navigation.state.params.title,
+    }),
+  },
+  Commit: {
+    screen: CommitScreen,
+    navigationOptions: ({ navigation }) => ({
+      title: navigation.state.params.title,
+    }),
+  },
+  EditIssueComment: {
+    screen: EditIssueCommentScreen,
     navigationOptions: ({ navigation }) => ({
       title: navigation.state.params.title,
     }),
@@ -188,7 +214,33 @@ const sharedRoutes = {
       title: navigation.state.params.title,
     }),
   },
+  LanguageSettings: {
+    screen: LanguageSettingsScreen,
+    navigationOptions: ({ navigation }) => ({
+      title: navigation.state.params.title,
+    }),
+  },
 };
+
+Object.keys(sharedRoutes).forEach(routeName => {
+  const { navigationOptions } = sharedRoutes[routeName];
+
+  if (navigationOptions.header !== null) {
+    // fix headerForceInset if the header is not disabled
+    const headerForceInset = getHeaderForceInset(routeName);
+
+    if (typeof navigationOptions === 'function') {
+      const fn = navigationOptions;
+
+      sharedRoutes[routeName].navigationOptions = (...args) => ({
+        ...fn(...args),
+        headerForceInset,
+      });
+    } else {
+      navigationOptions.headerForceInset = headerForceInset;
+    }
+  }
+});
 
 const HomeStackNavigator = StackNavigator(
   {
@@ -196,6 +248,7 @@ const HomeStackNavigator = StackNavigator(
       screen: EventsScreen,
       navigationOptions: {
         headerTitle: 'GitPoint',
+        headerForceInset: getHeaderForceInset('Events'),
       },
     },
     ...sharedRoutes,
@@ -255,60 +308,63 @@ const MainTabNavigator = TabNavigator(
     Home: {
       screen: HomeStackNavigator,
       navigationOptions: {
-        tabBarIcon: ({ tintColor }) =>
+        tabBarIcon: ({ tintColor }) => (
           <Icon
             containerStyle={{ justifyContent: 'center', alignItems: 'center' }}
             color={tintColor}
             name="home"
             size={33}
-          />,
+          />
+        ),
       },
     },
     Notifications: {
       screen: NotificationsStackNavigator,
       navigationOptions: {
-        tabBarIcon: ({ tintColor }) =>
-          <Icon
-            containerStyle={{ justifyContent: 'center', alignItems: 'center' }}
-            color={tintColor}
-            name="notifications"
-            size={33}
-          />,
+        tabBarIcon: ({ tintColor }) => (
+          <NotificationIcon iconColor={tintColor} />
+        ),
       },
     },
     Search: {
       screen: SearchStackNavigator,
       navigationOptions: {
-        tabBarIcon: ({ tintColor }) =>
+        tabBarIcon: ({ tintColor }) => (
           <Icon
             containerStyle={{ justifyContent: 'center', alignItems: 'center' }}
             color={tintColor}
             name="search"
             size={33}
-          />,
+          />
+        ),
       },
     },
     MyProfile: {
       screen: MyProfileStackNavigator,
       navigationOptions: {
-        tabBarIcon: ({ tintColor }) =>
+        tabBarIcon: ({ tintColor }) => (
           <Icon
             containerStyle={{ justifyContent: 'center', alignItems: 'center' }}
             color={tintColor}
             name="person"
             size={33}
-          />,
+          />
+        ),
       },
     },
   },
   {
+    lazy: true,
     tabBarPosition: 'bottom',
     tabBarOptions: {
       showLabel: false,
       activeTintColor: colors.primaryDark,
       inactiveTintColor: colors.grey,
+      style: {
+        backgroundColor: colors.alabaster,
+      },
     },
-    tabBarComponent: ({ jumpToIndex, ...props }) =>
+    tabBarComponent: ({ jumpToIndex, ...props }) => (
       <TabBarBottom
         {...props}
         jumpToIndex={index => {
@@ -334,7 +390,8 @@ const MainTabNavigator = TabNavigator(
             jumpToIndex(index);
           }
         }}
-      />,
+      />
+    ),
   }
 );
 
@@ -369,5 +426,8 @@ export const GitPoint = StackNavigator(
   {
     headerMode: 'screen',
     URIPrefix: 'gitpoint://',
+    cardStyle: {
+      backgroundColor: 'transparent',
+    },
   }
 );

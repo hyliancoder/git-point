@@ -1,14 +1,15 @@
+/* eslint-disable no-shadow */
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import {
-  StyleSheet,
-  Text,
   View,
+  ActivityIndicator,
   FlatList,
   Dimensions,
   Platform,
 } from 'react-native';
 import { ButtonGroup } from 'react-native-elements';
+import { SafeAreaView } from 'react-navigation';
 
 import {
   ViewContainer,
@@ -17,39 +18,97 @@ import {
   LoadingContainer,
   SearchBar,
 } from 'components';
-import { colors, fonts, normalize } from 'config';
-import { translate } from 'utils';
-import { searchRepos, searchUsers } from '../index';
+import styled from 'styled-components';
+import { colors, fonts, normalize, getHeaderForceInset } from 'config';
+import { t } from 'utils';
+import { RestClient } from 'api';
 
-const mapStateToProps = state => ({
-  users: state.search.users,
-  repos: state.search.repos,
-  language: state.auth.language,
-  isPendingSearchUsers: state.search.isPendingSearchUsers,
-  isPendingSearchRepos: state.search.isPendingSearchRepos,
-});
+const NAV_QUERY_PARAM = 'q';
+const SearchTypes = {
+  REPOS: 0,
+  USERS: 1,
+};
 
-const mapDispatchToProps = dispatch => ({
-  searchReposByDispatch: query => dispatch(searchRepos(query)),
-  searchUsersByDispatch: query => dispatch(searchUsers(query)),
-});
+const mapStateToProps = (state, ownProps) => {
+  const {
+    auth: { locale },
+    pagination: { SEARCH_REPOS, SEARCH_USERS },
+    entities: { repos, users },
+  } = state;
 
-const styles = StyleSheet.create({
-  searchBarWrapper: {
-    flexDirection: 'row',
-    marginTop: Platform.OS === 'ios' ? 20 : 5,
-  },
-  searchContainer: {
-    width: Dimensions.get('window').width,
-    backgroundColor: colors.white,
-    flex: 1,
-    height: 55,
-    justifyContent: 'center',
-  },
-  list: {
-    marginTop: 0,
-  },
-  buttonGroupContainer: {
+  const searchQuery = ownProps.navigation.getParam(NAV_QUERY_PARAM);
+
+  const reposSearchResultsPagination = SEARCH_REPOS[searchQuery] || {
+    ids: [],
+    isFetching: false,
+  };
+  const reposSearchResults = reposSearchResultsPagination.ids.map(
+    id => repos[id]
+  );
+
+  const usersSearchResultsPagination = SEARCH_USERS[searchQuery] || {
+    ids: [],
+    isFetching: false,
+  };
+  const usersSearchResults = usersSearchResultsPagination.ids.map(
+    id => users[id]
+  );
+
+  return {
+    locale,
+    reposSearchResultsPagination,
+    reposSearchResults,
+    usersSearchResultsPagination,
+    usersSearchResults,
+    searchQuery,
+  };
+};
+
+const mapDispatchToProps = {
+  searchRepos: RestClient.search.repos,
+  searchUsers: RestClient.search.users,
+};
+
+const StyledSafeAreaView = styled(SafeAreaView).attrs({
+  forceInset: getHeaderForceInset('Search'),
+})`
+  background-color: ${colors.white};
+`;
+
+const SearchBarWrapper = styled.View`
+  flex-direction: row;
+`;
+
+const SearchContainer = styled.View`
+  width: ${Dimensions.get('window').width};
+  background-color: ${colors.white};
+  flex: 1;
+  height: 55;
+  justify-content: center;
+`;
+
+const ListContainer = styled.View`
+  border-top-color: ${colors.greyLight};
+  border-top-width: ${props => (props.noBorderTopWidth ? 0 : 1)};
+  margin-bottom: 105;
+`;
+
+const TextContainer = styled.View`
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+`;
+
+const SearchInfoText = styled.Text`
+  font-size: ${normalize(18)};
+  text-align: center;
+  ${fonts.fontPrimary};
+`;
+
+const StyledButtonGroup = styled(ButtonGroup).attrs({
+  textStyle: { ...fonts.fontPrimaryBold },
+  selectedTextStyle: { color: colors.black },
+  containerStyle: {
     height: 30,
     ...Platform.select({
       ios: {
@@ -62,48 +121,17 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  buttonGroupText: {
-    ...fonts.fontPrimaryBold,
-  },
-  buttonGroupTextSelected: {
-    color: colors.black,
-  },
-  loadingIndicatorContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  textContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchTitle: {
-    fontSize: normalize(18),
-    textAlign: 'center',
-    ...fonts.fontPrimary,
-  },
-  searchCancelButton: {
-    color: colors.black,
-  },
-  listContainer: {
-    borderTopColor: colors.greyLight,
-    borderTopWidth: 1,
-    marginBottom: 105,
-  },
-  noBorderTopWidth: {
-    borderTopWidth: 0,
-  },
-});
+})``;
 
 class Search extends Component {
   props: {
-    searchReposByDispatch: Function,
-    searchUsersByDispatch: Function,
-    users: Array,
-    repos: Array,
-    language: string,
-    isPendingSearchUsers: boolean,
-    isPendingSearchRepos: boolean,
+    searchRepos: Function,
+    searchUsers: Function,
+    usersSearchResults: Array,
+    usersSearchResultsPagination: Object,
+    reposSearchResults: Array,
+    reposSearchResultsPagination: Object,
+    locale: string,
     navigation: Object,
   };
 
@@ -114,12 +142,13 @@ class Search extends Component {
     searchFocus: boolean,
   };
 
-  constructor() {
-    super();
+  constructor(props) {
+    super(props);
 
     this.state = {
       query: '',
-      searchType: 0,
+      currentQuery: {},
+      searchType: SearchTypes.REPOS,
       searchStart: false,
       searchFocus: false,
     };
@@ -129,23 +158,76 @@ class Search extends Component {
     this.renderItem = this.renderItem.bind(this);
   }
 
-  search(query, selectedType = null) {
-    const { searchReposByDispatch, searchUsersByDispatch } = this.props;
+  getNoResultsFound = (type = this.state.searchType) => {
+    const { locale } = this.props;
 
+    switch (type) {
+      case SearchTypes.REPOS:
+        return t('No repositories found :(', locale);
+      case SearchTypes.USERS:
+        return t('No users found :(', locale);
+      default:
+        return null;
+    }
+  };
+
+  getSearchPagination = (type = this.state.searchType) => {
+    switch (type) {
+      case SearchTypes.REPOS:
+        return this.props.reposSearchResultsPagination;
+
+      case SearchTypes.USERS:
+        return this.props.usersSearchResultsPagination;
+
+      default:
+        return null;
+    }
+  };
+
+  getSearchResults = (type = this.state.searchType) => {
+    switch (type) {
+      case SearchTypes.REPOS:
+        return this.props.reposSearchResults;
+
+      case SearchTypes.USERS:
+        return this.props.usersSearchResults;
+
+      default:
+        return null;
+    }
+  };
+
+  getSearcher = (type = this.state.searchType) => {
+    switch (type) {
+      case SearchTypes.REPOS:
+        return this.props.searchRepos;
+
+      case SearchTypes.USERS:
+        return this.props.searchUsers;
+
+      default:
+        return null;
+    }
+  };
+
+  search(query, selectedType = null) {
     const selectedSearchType =
       selectedType !== null ? selectedType : this.state.searchType;
 
-    if (query !== '') {
+    if (query.trim() !== '') {
+      const searchedQuery = query.toLowerCase();
+
       this.setState({
         searchStart: true,
-        query,
+        currentQuery: {
+          ...this.state.currentQuery,
+          [selectedSearchType]: searchedQuery,
+        },
+        query: searchedQuery,
       });
+      this.props.navigation.setParams({ [NAV_QUERY_PARAM]: searchedQuery });
 
-      if (selectedSearchType === 0) {
-        searchReposByDispatch(query);
-      } else {
-        searchUsersByDispatch(query);
-      }
+      this.getSearcher(selectedSearchType)(searchedQuery);
     }
   }
 
@@ -154,8 +236,9 @@ class Search extends Component {
       this.setState({
         searchType: selectedType,
       });
-
-      this.search(this.state.query, selectedType);
+      if (this.state.currentQuery[selectedType] !== this.state.query) {
+        this.search(this.state.query, selectedType);
+      }
     }
   }
 
@@ -164,138 +247,135 @@ class Search extends Component {
   };
 
   renderItem = ({ item }) => {
-    if (this.state.searchType === 0) {
-      return (
-        <RepositoryListItem
-          repository={item}
-          navigation={this.props.navigation}
-        />
-      );
+    switch (this.state.searchType) {
+      case SearchTypes.REPOS:
+        return (
+          <RepositoryListItem
+            repository={item}
+            navigation={this.props.navigation}
+          />
+        );
+
+      case SearchTypes.USERS:
+        return <UserListItem user={item} navigation={this.props.navigation} />;
+
+      default:
+        return null;
+    }
+  };
+
+  renderFooter = isPendingSearch => {
+    if (isPendingSearch) {
+      return null;
     }
 
-    return <UserListItem user={item} navigation={this.props.navigation} />;
+    if (this.getSearchPagination().nextPageUrl === null) {
+      return null;
+    }
+
+    return (
+      <View
+        style={{
+          paddingVertical: 20,
+        }}
+      >
+        <ActivityIndicator animating size="large" />
+      </View>
+    );
   };
 
   render() {
-    const {
-      users,
-      repos,
-      language,
-      isPendingSearchUsers,
-      isPendingSearchRepos,
-    } = this.props;
+    const { locale } = this.props;
+
+    const isPendingSearch =
+      this.getSearchResults().length === 0 &&
+      this.getSearchPagination().isFetching;
+
     const { query, searchType, searchStart } = this.state;
-    const noReposFound =
-      searchStart &&
-      !isPendingSearchRepos &&
-      repos.length === 0 &&
-      searchType === 0;
 
-    const noUsersFound =
-      searchStart &&
-      !isPendingSearchUsers &&
-      users.length === 0 &&
-      searchType === 1;
-
-    const isPending = isPendingSearchUsers || isPendingSearchRepos;
-    const noResults = !noUsersFound && !noReposFound;
+    const noResults =
+      this.getSearchResults().length === 0 &&
+      !this.getSearchPagination().isFetching;
 
     return (
       <ViewContainer>
-        <View>
-          <View style={styles.searchBarWrapper}>
-            <View style={styles.searchContainer}>
-              <SearchBar
-                textColor={colors.primaryDark}
-                textFieldBackgroundColor={colors.greyLight}
-                showsCancelButton={this.state.searchFocus}
-                onFocus={() => this.setState({ searchFocus: true })}
-                onCancelButtonPress={() =>
-                  this.setState({ searchStart: false, query: '' })}
-                onSearchButtonPress={text => {
-                  this.search(text);
-                }}
-                hideBackground
-              />
-            </View>
-          </View>
+        <StyledSafeAreaView />
 
-          <ButtonGroup
-            onPress={this.switchQueryType}
-            selectedIndex={this.state.searchType}
-            buttons={[
-              translate('search.main.repositoryButton', language),
-              translate('search.main.userButton', language),
-            ]}
-            textStyle={styles.buttonGroupText}
-            selectedTextStyle={styles.buttonGroupTextSelected}
-            containerStyle={styles.buttonGroupContainer}
-          />
-        </View>
-
-        {isPendingSearchRepos &&
-          searchType === 0 &&
-          <LoadingContainer
-            animating={isPendingSearchRepos && searchType === 0}
-            text={translate('search.main.searchingMessage', language, {
-              query,
-            })}
-            style={styles.marginSpacing}
-          />}
-
-        {isPendingSearchUsers &&
-          searchType === 1 &&
-          <LoadingContainer
-            animating={isPendingSearchUsers && searchType === 1}
-            text={translate('search.main.searchingMessage', language, {
-              query,
-            })}
-            style={styles.marginSpacing}
-          />}
-
-        {searchStart &&
-          noResults &&
-          <View
-            style={[styles.listContainer, isPending && styles.noBorderTopWidth]}
-          >
-            <FlatList
-              data={searchType === 0 ? repos : users}
-              keyExtractor={this.keyExtractor}
-              renderItem={this.renderItem}
+        <SearchBarWrapper>
+          <SearchContainer>
+            <SearchBar
+              textColor={colors.primaryDark}
+              textFieldBackgroundColor={colors.greyLight}
+              showsCancelButton={this.state.searchFocus}
+              onFocus={() => this.setState({ searchFocus: true })}
+              onCancelButtonPress={() =>
+                this.setState({ searchStart: false, query: '' })
+              }
+              onSearchButtonPress={text => {
+                this.search(text);
+              }}
+              hideBackground
             />
-          </View>}
+          </SearchContainer>
+        </SearchBarWrapper>
 
-        {!searchStart &&
-          <View style={styles.textContainer}>
-            <Text style={styles.searchTitle}>
-              {translate('search.main.searchMessage', language, {
+        <StyledButtonGroup
+          onPress={this.switchQueryType}
+          selectedIndex={this.state.searchType}
+          buttons={[t('Repositories', locale), t('Users', locale)]}
+        />
+
+        {isPendingSearch && (
+          <LoadingContainer
+            animating={isPendingSearch}
+            text={t('Searching for {query}', locale, {
+              query,
+            })}
+          />
+        )}
+
+        {searchStart &&
+          !noResults && (
+            <ListContainer noBorderTopWidth={isPendingSearch}>
+              <FlatList
+                data={this.getSearchResults()}
+                onRefresh={() =>
+                  this.getSearcher()(query, {
+                    forceRefresh: true,
+                  })
+                }
+                refreshing={isPendingSearch}
+                onEndReached={() =>
+                  this.getSearcher()(query, { loadMore: true })
+                }
+                onEndReachedThreshold={0.5}
+                ListFooterComponent={() => this.renderFooter(isPendingSearch)}
+                keyExtractor={this.keyExtractor}
+                renderItem={this.renderItem}
+              />
+            </ListContainer>
+          )}
+
+        {!searchStart && (
+          <TextContainer>
+            <SearchInfoText>
+              {t('Search for any {type}', locale, {
                 type:
-                  searchType === 0
-                    ? translate('search.main.repository', language)
-                    : translate('search.main.user', language),
+                  searchType === SearchTypes.REPOS
+                    ? t('repository', locale)
+                    : t('user', locale),
               })}
-            </Text>
-          </View>}
+            </SearchInfoText>
+          </TextContainer>
+        )}
 
         {searchStart &&
-          !isPendingSearchRepos &&
-          repos.length === 0 &&
-          searchType === 0 &&
-          <View style={styles.textContainer}>
-            <Text style={styles.searchTitle}>
-              {translate('search.main.noRepositoriesFound', language)}
-            </Text>
-          </View>}
-
-        {searchStart &&
-          !isPendingSearchUsers &&
-          users.length === 0 &&
-          searchType === 1 &&
-          <View style={styles.textContainer}>
-            <Text style={styles.searchTitle}>
-              {translate('search.main.noUsersFound', language)}
-            </Text>
-          </View>}
+          !isPendingSearch &&
+          this.getSearchResults().length === 0 && (
+            <TextContainer>
+              <SearchInfoText>{this.getNoResultsFound()}</SearchInfoText>
+            </TextContainer>
+          )}
       </ViewContainer>
     );
   }

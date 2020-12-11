@@ -1,14 +1,15 @@
 import React, { Component } from 'react';
+import styled from 'styled-components';
 import { connect } from 'react-redux';
+import { bindActionCreators } from 'redux';
 import {
-  StyleSheet,
-  Text,
   RefreshControl,
   View,
   ActivityIndicator,
   Dimensions,
 } from 'react-native';
 import { ListItem } from 'react-native-elements';
+import { SafeAreaView } from 'react-navigation';
 
 import {
   ViewContainer,
@@ -18,68 +19,67 @@ import {
   UserListItem,
   EntityInfo,
 } from 'components';
-import { colors, fonts, normalize } from 'config';
-import { getUser, getOrgs, signOut, getStarCount } from 'auth';
-import { emojifyText, openURLInView, translate } from 'utils';
+import { colors, fonts, normalize, getHeaderForceInset } from 'config';
+import { getUser, getOrgs, getStarCount } from 'auth';
+import { emojifyText, openURLInView, t } from 'utils';
 
 const mapStateToProps = state => ({
   user: state.auth.user,
   orgs: state.auth.orgs,
-  language: state.auth.language,
+  locale: state.auth.locale,
   starCount: state.auth.starCount,
   isPendingUser: state.auth.isPendingUser,
   isPendingOrgs: state.auth.isPendingOrgs,
   hasInitialUser: state.auth.hasInitialUser,
 });
 
-const mapDispatchToProps = dispatch => ({
-  getUserByDispatch: () => dispatch(getUser()),
-  getOrgsByDispatch: () => dispatch(getOrgs()),
-  getStarCountByDispatch: () => dispatch(getStarCount()),
-  signOutByDispatch: () => dispatch(signOut()),
-});
+const mapDispatchToProps = dispatch =>
+  bindActionCreators(
+    {
+      getUser,
+      getOrgs,
+      getStarCount,
+    },
+    dispatch
+  );
 
-const styles = StyleSheet.create({
-  listTitle: {
-    color: colors.black,
-    ...fonts.fontPrimary,
+const StyledSafeAreaView = styled(SafeAreaView).attrs({
+  forceInset: getHeaderForceInset('MyProfile'),
+})`
+  background-color: ${colors.primaryDark};
+`;
+
+const Note = styled.Text`
+  font-size: ${normalize(11)};
+  color: ${colors.primaryDark};
+  ${fonts.fontPrimaryLight};
+  text-align: center;
+  padding: 10px;
+`;
+
+const NoteLink = styled.Text`
+  ${fonts.fontPrimarySemiBold};
+`;
+
+const BioListItem = styled(ListItem).attrs({
+  containerStyle: {
+    borderBottomColor: colors.greyLight,
+    borderBottomWidth: 1,
   },
-  listSubTitle: {
+  titleStyle: {
     color: colors.greyDark,
     ...fonts.fontPrimary,
   },
-  update: {
-    flex: 1,
-    alignItems: 'center',
-    marginVertical: 40,
-  },
-  updateText: {
-    color: colors.greyDark,
-    ...fonts.fontPrimary,
-  },
-  updateTextSub: {
-    fontSize: normalize(11),
-  },
-  note: {
-    fontSize: normalize(11),
-    color: colors.primaryDark,
-    ...fonts.fontPrimaryLight,
-    textAlign: 'center',
-    padding: 10,
-  },
-  noteLink: {
-    ...fonts.fontPrimarySemiBold,
-  },
-});
+})``;
 
 class AuthProfile extends Component {
   props: {
-    getUserByDispatch: Function,
-    getOrgsByDispatch: Function,
-    getStarCountByDispatch: Function,
+    getUser: Function,
+    getOrgs: Function,
+    getStarCount: Function,
     user: Object,
     orgs: Array,
-    language: string,
+    locale: string,
     starCount: string,
     isPendingUser: boolean,
     isPendingOrgs: boolean,
@@ -92,9 +92,9 @@ class AuthProfile extends Component {
   }
 
   refreshProfile = () => {
-    this.props.getUserByDispatch();
-    this.props.getOrgsByDispatch();
-    this.props.getStarCountByDispatch();
+    this.props.getUser();
+    this.props.getOrgs();
+    this.props.getStarCount();
   };
 
   render() {
@@ -103,91 +103,105 @@ class AuthProfile extends Component {
       orgs,
       isPendingUser,
       isPendingOrgs,
-      language,
+      locale,
       starCount,
       navigation,
       hasInitialUser,
     } = this.props;
 
+    const hasBackButton = navigation.state.routeName === 'AuthProfile';
+
     const isPending = isPendingUser || isPendingOrgs;
 
     return (
       <ViewContainer>
+        <StyledSafeAreaView />
+
         <ParallaxScroll
-          renderContent={() =>
+          renderContent={() => (
             <UserProfile
               type="user"
               initialUser={hasInitialUser ? user : {}}
               user={hasInitialUser ? user : {}}
-              starCount={starCount}
-              language={language}
+              starCount={hasInitialUser ? starCount : ''}
+              locale={locale}
               navigation={navigation}
-            />}
+            />
+          )}
           refreshControl={
             <RefreshControl
-              refreshing={isPending}
+              refreshing={isPendingUser}
               onRefresh={this.refreshProfile}
             />
           }
           stickyTitle={user.login}
+          navigateBack={hasBackButton}
+          navigation={navigation}
           showMenu
           menuIcon="gear"
           menuAction={() =>
             navigation.navigate('UserOptions', {
-              title: translate('auth.userOptions.title', language),
-            })}
+              title: t('Options', locale),
+            })
+          }
         >
-          {isPending &&
+          {isPending && (
             <ActivityIndicator
               animating={isPending}
               style={{ height: Dimensions.get('window').height / 3 }}
               size="large"
-            />}
+            />
+          )}
 
           {hasInitialUser &&
             user.bio &&
-            user.bio !== '' &&
-            <SectionList title={translate('common.bio', language)}>
-              <ListItem
-                subtitle={emojifyText(user.bio)}
-                subtitleStyle={styles.listSubTitle}
-                hideChevron
-              />
-            </SectionList>}
+            user.bio !== '' && (
+              <SectionList title={t('BIO', locale)}>
+                <BioListItem
+                  titleNumberOfLines={0}
+                  title={emojifyText(user.bio)}
+                  hideChevron
+                />
+              </SectionList>
+            )}
 
-          {!isPending &&
-            <EntityInfo entity={user} orgs={orgs} navigation={navigation} />}
+          {!isPending && (
+            <EntityInfo
+              entity={user}
+              orgs={orgs}
+              navigation={navigation}
+              locale={locale}
+            />
+          )}
 
-          {!isPending &&
+          {!isPending && (
             <View>
               <SectionList
-                title={translate('common.orgs', language)}
+                title={t('ORGANIZATIONS', locale)}
                 noItems={orgs.length === 0}
-                noItemsMessage={translate('common.noOrgsMessage', language)}
+                noItemsMessage={t('No organizations', locale)}
               >
-                {orgs.map(item =>
+                {orgs.map(item => (
                   <UserListItem
                     key={item.id}
                     user={item}
                     navigation={navigation}
                   />
-                )}
-                <Text style={styles.note}>
-                  {translate('auth.profile.orgsRequestApprovalTop', language)}
+                ))}
+                <Note>
+                  {t("Can't see all your organizations?", locale)}
                   {'\n'}
-                  <Text
-                    style={styles.noteLink}
+                  <NoteLink
                     onPress={() =>
-                      openURLInView('https://github.com/settings/applications')}
+                      openURLInView('https://github.com/settings/applications')
+                    }
                   >
-                    {translate(
-                      'auth.profile.orgsRequestApprovalBottom',
-                      language
-                    )}
-                  </Text>
-                </Text>
+                    {t('You may have to request approval for them.', locale)}
+                  </NoteLink>
+                </Note>
               </SectionList>
-            </View>}
+            </View>
+          )}
         </ParallaxScroll>
       </ViewContainer>
     );

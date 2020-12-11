@@ -1,9 +1,12 @@
+/* eslint-disable no-shadow */
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
-import { StyleSheet, RefreshControl, Share } from 'react-native';
+import styled from 'styled-components';
+import { RefreshControl, Share, ActivityIndicator } from 'react-native';
 import { ListItem } from 'react-native-elements';
 import ActionSheet from 'react-native-actionsheet';
-
+import { SafeAreaView } from 'react-navigation';
+import { v3, RestClient } from 'api';
 import {
   ViewContainer,
   LoadingRepositoryProfile,
@@ -15,101 +18,112 @@ import {
   UserListItem,
   IssueListItem,
   LoadingMembersList,
-  LoadingModal,
+  TopicsList,
 } from 'components';
-import { translate } from 'utils';
-import { colors, fonts } from 'config';
-import {
-  getRepositoryInfo,
-  getContributors,
-  getIssues,
-  changeStarStatusRepo,
-  forkRepo,
-  subscribeToRepo,
-  unSubscribeToRepo,
-} from '../repository.action';
+import { t, openURLInView, toOldIssueFormat, toOldUserFormat } from 'utils';
+import { colors, fonts, getHeaderForceInset } from 'config';
+import { getCommits } from '../repository.action';
 
-const mapStateToProps = state => ({
-  username: state.auth.user.login,
-  language: state.auth.language,
-  repository: state.repository.repository,
-  contributors: state.repository.contributors,
-  issues: state.repository.issues,
-  starred: state.repository.starred,
-  forked: state.repository.forked,
-  subscribed: state.repository.subscribed,
-  isPendingRepository: state.repository.isPendingRepository,
-  isPendingContributors: state.repository.isPendingContributors,
-  isPendingIssues: state.repository.isPendingIssues,
-  isPendingCheckStarred: state.repository.isPendingCheckStarred,
-  isPendingFork: state.repository.isPendingFork,
-  isPendingSubscribe: state.repository.isPendingSubscribe,
-});
+const mapStateToProps = (state, ownProps) => {
+  const {
+    auth: { user, locale },
+    entities: { users, gqlRepos },
+    pagination: { REPOS_GET_CONTRIBUTORS },
+  } = state;
 
-const mapDispatchToProps = dispatch => ({
-  getRepositoryInfoByDispatch: url => dispatch(getRepositoryInfo(url)),
-  getContributorsByDispatch: url => dispatch(getContributors(url)),
-  getIssuesByDispatch: url => dispatch(getIssues(url)),
-  changeStarStatusRepoByDispatch: (owner, repo, starred) =>
-    dispatch(changeStarStatusRepo(owner, repo, starred)),
-  forkRepoByDispatch: (owner, repo) => dispatch(forkRepo(owner, repo)),
-  subscribeToRepo: (owner, repo) => dispatch(subscribeToRepo(owner, repo)),
-  unSubscribeToRepo: (owner, repo) => dispatch(unSubscribeToRepo(owner, repo)),
-});
+  const repoId = ownProps.navigation.state.params.repoId;
 
-const styles = StyleSheet.create({
-  listTitle: {
+  const repository = gqlRepos[repoId];
+
+  const contributorsPagination = REPOS_GET_CONTRIBUTORS[repoId] || {
+    ids: [],
+    isFetching: true,
+  };
+  const contributors = contributorsPagination.ids.map(id => users[id]);
+
+  return {
+    username: user.login,
+    contributors,
+    contributorsPagination,
+    repository,
+    commits: state.repository.commits,
+    repoId,
+    locale,
+  };
+};
+
+const mapDispatchToProps = {
+  getRepoById: RestClient.graphql.getRepo,
+  getContributors: RestClient.repos.getContributors,
+  starRepo: RestClient.activity.starRepo,
+  unstarRepo: RestClient.activity.unstarRepo,
+  watchRepo: RestClient.activity.watchRepo,
+  unwatchRepo: RestClient.activity.unwatchRepo,
+  forkRepo: RestClient.repos.fork,
+  getCommits,
+};
+
+const StyledSafeAreaView = styled(SafeAreaView).attrs({
+  forceInset: getHeaderForceInset('Repository'),
+})`
+  background-color: ${colors.primaryDark};
+`;
+
+const LoadingMembersContainer = styled.View`
+  padding: 5px;
+`;
+
+const SectionListItem = styled(ListItem).attrs({
+  titleStyle: {
     color: colors.black,
     ...fonts.fontPrimary,
   },
-});
+  containerStyle: {
+    borderBottomColor: colors.greyLight,
+    borderBottomWidth: 1,
+  },
+})``;
 
 class Repository extends Component {
   props: {
-    // selectRepositoryByDispatch: Function,
-    getRepositoryInfoByDispatch: Function,
-    // getIssuesByDispatch: Function,
-    changeStarStatusRepoByDispatch: Function,
-    forkRepoByDispatch: Function,
-    // repositoryName: string,
+    getRepoById: Function,
+    getContributors: Function,
+    getCommits: Function,
+    starRepo: Function,
+    unstarRepo: Function,
+    watchRepo: Function,
+    unwatchRepo: Function,
+    forkRepo: Function,
     repository: Object,
+    repoId: String,
     contributors: Array,
-    issues: Array,
-    starred: boolean,
-    // forked: boolean,
-    isPendingRepository: boolean,
-    isPendingContributors: boolean,
-    isPendingIssues: boolean,
-    isPendingCheckStarred: boolean,
-    isPendingFork: boolean,
-    isPendingSubscribe: boolean,
-    // isPendingCheckForked: boolean,
+    commits: Array,
+    contributorsPagination: Object,
     navigation: Object,
     username: string,
-    language: string,
-    subscribed: boolean,
-    subscribeToRepo: Function,
-    unSubscribeToRepo: Function,
+    locale: string,
   };
 
   state: {
     refreshing: boolean,
+    isChangingStar: boolean,
+    isChangingSubscription: boolean,
+    hasError: boolean,
   };
 
   constructor(props) {
     super(props);
     this.state = {
       refreshing: false,
+      isChangingStar: false,
+      isChangingSubscription: false,
+      hasError: false,
+      errorMessage: '',
     };
   }
 
   componentDidMount() {
-    const {
-      repository: repo,
-      repositoryUrl: repoUrl,
-    } = this.props.navigation.state.params;
-
-    this.props.getRepositoryInfoByDispatch(repo ? repo.url : repoUrl);
+    this.fetchRepoInfo();
   }
 
   showMenuActionSheet = () => {
@@ -118,11 +132,13 @@ class Repository extends Component {
 
   handlePress = index => {
     const {
-      starred,
-      subscribed,
       repository,
-      changeStarStatusRepoByDispatch,
-      forkRepoByDispatch,
+      repoId,
+      forkRepo,
+      starRepo,
+      unstarRepo,
+      watchRepo,
+      unwatchRepo,
       navigation,
       username,
     } = this.props;
@@ -130,52 +146,66 @@ class Repository extends Component {
     const showFork = repository.owner.login !== username;
 
     if (index === 0) {
-      changeStarStatusRepoByDispatch(
-        repository.owner.login,
-        repository.name,
-        starred
-      );
+      this.setState({ isChangingStar: true });
+      if (repository.viewerHasStarred) {
+        unstarRepo(repoId).then(() => this.setState({ isChangingStar: false }));
+      } else {
+        starRepo(repoId).then(() => this.setState({ isChangingStar: false }));
+      }
     } else if (index === 1 && showFork) {
-      forkRepoByDispatch(repository.owner.login, repository.name).then(json => {
-        navigation.navigate('Repository', { repository: json });
+      forkRepo(repoId).then(() => {
+        navigation.navigate('Repository', {
+          repoId: `${username}/${repository.name}`,
+        });
       });
     } else if ((index === 2 && showFork) || (index === 1 && !showFork)) {
-      const subscribeMethod = !subscribed
-        ? this.props.subscribeToRepo
-        : this.props.unSubscribeToRepo;
-
-      subscribeMethod(repository.owner.login, repository.name);
+      this.setState({ isChangingSubscription: true });
+      if (repository.viewerSubscription === 'SUBSCRIBED') {
+        unwatchRepo(repoId).then(() =>
+          this.setState({ isChangingSubscription: false })
+        );
+      } else {
+        watchRepo(repoId).then(() =>
+          this.setState({ isChangingSubscription: false })
+        );
+      }
     } else if ((index === 3 && showFork) || (index === 2 && !showFork)) {
       this.shareRepository(repository);
+    } else if ((index === 4 && showFork) || (index === 3 && !showFork)) {
+      openURLInView(repository.webUrl);
     }
   };
 
   fetchRepoInfo = () => {
-    const {
-      repository: repo,
-      repositoryUrl: repoUrl,
-    } = this.props.navigation.state.params;
+    const { repoId } = this.props;
+    const repoCommitsURL = `${v3.root}/repos/${repoId}/commits`;
 
     this.setState({ refreshing: true });
-    this.props
-      .getRepositoryInfoByDispatch(repo ? repo.url : repoUrl)
+    Promise.all([
+      this.props.getRepoById(repoId),
+      this.props.getContributors(repoId, { forceRefresh: true }),
+      this.props.getCommits(repoCommitsURL),
+    ])
       .then(() => {
         this.setState({ refreshing: false });
+      })
+      .catch(error => {
+        this.setState({ hasError: true, errorMessage: error });
       });
   };
 
   shareRepository = repository => {
-    const { language } = this.props;
-    const title = translate('repository.main.shareRepositoryTitle', language, {
+    const { locale } = this.props;
+    const title = t('Share {repoName}', locale, {
       repoName: repository.name,
     });
 
     Share.share(
       {
         title,
-        message: translate('repository.main.shareRepositoryMessage', language, {
+        message: t('Check out {repoName} on GitHub. {repoUrl}', locale, {
           repoName: repository.name,
-          repoUrl: repository.html_url,
+          repoUrl: repository.webUrl,
         }),
         url: undefined,
       },
@@ -186,78 +216,82 @@ class Repository extends Component {
     );
   };
 
+  renderLoadingMembers = () => {
+    if (this.props.contributorsPagination.nextPageUrl === null) {
+      return null;
+    }
+
+    return (
+      <LoadingMembersContainer>
+        <ActivityIndicator animating size="small" />
+      </LoadingMembersContainer>
+    );
+  };
+
   render() {
     const {
       repository,
+      repoId,
       contributors,
-      issues,
-      starred,
-      language,
-      isPendingRepository,
-      isPendingContributors,
-      isPendingIssues,
-      isPendingCheckStarred,
-      isPendingFork,
-      isPendingSubscribe,
+      commits,
+      contributorsPagination,
+      locale,
       navigation,
       username,
-      subscribed,
     } = this.props;
-    const { refreshing } = this.state;
+    const { refreshing, hasError } = this.state;
 
-    const initalRepository = navigation.state.params.repository;
-    const pulls = issues.filter(issue => issue.hasOwnProperty('pull_request')); // eslint-disable-line no-prototype-builtins
-    const pureIssues = issues.filter(issue => {
-      // eslint-disable-next-line no-prototype-builtins
-      return !issue.hasOwnProperty('pull_request');
-    });
+    const isPendingRepository =
+      !repository || typeof repository.openPullRequestsPreview === 'undefined';
 
-    const openPulls = pulls.filter(pull => pull.state === 'open');
-    const openIssues = pureIssues.filter(issue => issue.state === 'open');
+    const isPendingContributors =
+      contributors.length === 0 && contributorsPagination.isFetching;
+
+    const openPulls = isPendingRepository
+      ? []
+      : repository.openPullRequestsPreview.nodes;
+    const openIssues = isPendingRepository
+      ? []
+      : repository.openIssuesPreview.nodes;
+
     const showFork =
       repository && repository.owner && repository.owner.login !== username;
 
-    const repositoryActions = [
-      starred
-        ? translate('repository.main.unstarAction', language)
-        : translate('repository.main.starAction', language),
-      subscribed
-        ? translate('repository.main.unwatchAction', language)
-        : translate('repository.main.watchAction', language),
-      translate('repository.main.shareAction', language),
-    ];
+    const repositoryActions = repository
+      ? [
+          repository.viewerHasStarred ? t('Unstar', locale) : t('Star', locale),
+          repository.viewerSubscription === 'SUBSCRIBED'
+            ? t('Unwatch', locale)
+            : t('Watch', locale),
+          t('Share', locale),
+          t('Open in Browser', locale),
+        ]
+      : [];
 
     if (showFork) {
-      repositoryActions.splice(
-        1,
-        0,
-        translate('repository.main.forkAction', language)
-      );
+      repositoryActions.splice(1, 0, t('Fork', locale));
     }
 
-    const loader = isPendingFork ? <LoadingModal /> : null;
-    const isSubscribed = isPendingSubscribe ? false : subscribed;
-    const isStarred =
-      isPendingRepository || isPendingCheckStarred ? false : starred;
+    const showReadMe = !isPendingRepository && repository.README !== null;
 
     return (
       <ViewContainer>
-        {loader}
+        <StyledSafeAreaView />
 
         <ParallaxScroll
           renderContent={() => {
-            if (isPendingRepository && !initalRepository) {
-              return <LoadingRepositoryProfile language={language} />;
+            if (isPendingRepository) {
+              return <LoadingRepositoryProfile locale={locale} />;
             }
 
             return (
               <RepositoryProfile
-                repository={isPendingRepository ? initalRepository : repository}
-                starred={isStarred}
-                loading={isPendingRepository}
+                repository={repository}
+                isChangingStar={this.state.isChangingStar}
+                isChangingSubscription={this.state.isChangingSubscription}
                 navigation={navigation}
-                subscribed={isSubscribed}
-                language={language}
+                hasError={hasError}
+                locale={locale}
               />
             );
           }}
@@ -267,185 +301,201 @@ class Repository extends Component {
               onRefresh={this.fetchRepoInfo}
             />
           }
-          stickyTitle={repository.name}
-          showMenu={!isPendingRepository && !isPendingCheckStarred}
+          stickyTitle={isPendingRepository ? repoId : repository.name}
+          showMenu={!isPendingRepository}
           menuAction={this.showMenuActionSheet}
           navigation={navigation}
           navigateBack
         >
-          {initalRepository &&
-          !initalRepository.owner &&
-          isPendingRepository && (
-            <SectionList
-              title={translate('repository.main.ownerTitle', language)}
-            >
-              <LoadingUserListItem />
-            </SectionList>
-          )}
-
-          {!(initalRepository && initalRepository.owner) &&
-          (repository && repository.owner) &&
-          !isPendingRepository && (
-            <SectionList
-              title={translate('repository.main.ownerTitle', language)}
-            >
-              <UserListItem user={repository.owner} navigation={navigation} />
-            </SectionList>
-          )}
-
-          {initalRepository &&
-          initalRepository.owner && (
-            <SectionList
-              title={translate('repository.main.ownerTitle', language)}
-            >
-              <UserListItem
-                user={initalRepository.owner}
-                navigation={navigation}
+          {!hasError &&
+            !isPendingRepository &&
+            repository.repositoryTopics &&
+            repository.repositoryTopics.nodes.length > 0 && (
+              <TopicsList
+                title={t('TOPICS', locale)}
+                topics={repository.repositoryTopics.nodes.map(
+                  topic => topic.topic.name
+                )}
               />
+            )}
+
+          {!hasError &&
+            isPendingRepository && (
+              <SectionList title={t('OWNER', locale)}>
+                <LoadingUserListItem />
+              </SectionList>
+            )}
+
+          {!hasError &&
+            !isPendingRepository && (
+              <SectionList title={t('OWNER', locale)}>
+                <UserListItem
+                  user={toOldUserFormat(repository.owner)}
+                  navigation={navigation}
+                />
+              </SectionList>
+            )}
+
+          {!hasError &&
+            (isPendingRepository || isPendingContributors) && (
+              <LoadingMembersList title={t('CONTRIBUTORS', locale)} />
+            )}
+
+          {!hasError &&
+            !isPendingContributors && (
+              <MembersList
+                title={t('CONTRIBUTORS', locale)}
+                members={contributors}
+                noMembersMessage={t('No contributors found', locale)}
+                navigation={navigation}
+                onEndReached={() =>
+                  this.props.getContributors(repoId, { loadMore: true })
+                }
+                onEndReachedThreshold={0.5}
+                ListFooterComponent={this.renderLoadingMembers}
+              />
+            )}
+
+          {!hasError && (
+            <SectionList title={t('SOURCE', locale)}>
+              {showReadMe && (
+                <SectionListItem
+                  title={t('README', locale)}
+                  leftIcon={{
+                    name: 'book',
+                    color: colors.grey,
+                    type: 'octicon',
+                  }}
+                  onPress={() =>
+                    navigation.navigate('ReadMe', {
+                      repository,
+                    })
+                  }
+                  underlayColor={colors.greyLight}
+                />
+              )}
+              <SectionListItem
+                title={t('View Code', locale)}
+                leftIcon={{
+                  name: 'code',
+                  color: colors.grey,
+                  type: 'octicon',
+                }}
+                onPress={() =>
+                  navigation.navigate('RepositoryCodeList', {
+                    title: t('Code', locale),
+                    topLevel: true,
+                    contentsUrl: `https://api.github.com/repos/${repoId}/contents`,
+                  })
+                }
+                underlayColor={colors.greyLight}
+                disabled={isPendingRepository}
+              />
+              {commits.length > 0 && (
+                <SectionListItem
+                  title={t('View Commits', locale)}
+                  leftIcon={{
+                    name: 'git-commit',
+                    color: colors.grey,
+                    type: 'octicon',
+                  }}
+                  onPress={() =>
+                    this.props.navigation.navigate('CommitList', {
+                      commits,
+                      title: t('Commits', locale),
+                      locale,
+                    })
+                  }
+                  underlayColor={colors.greyLight}
+                />
+              )}
             </SectionList>
           )}
 
-          {(isPendingRepository || isPendingContributors) && (
-            <LoadingMembersList
-              title={translate('repository.main.contributorsTitle', language)}
-            />
-          )}
-
-          {!isPendingContributors && (
-            <MembersList
-              title={translate('repository.main.contributorsTitle', language)}
-              members={contributors}
-              noMembersMessage={translate(
-                'repository.main.noContributorsMessage',
-                language
-              )}
-              navigation={navigation}
-            />
-          )}
-
-          <SectionList
-            title={translate('repository.main.sourceTitle', language)}
-          >
-            <ListItem
-              title={translate('repository.main.readMe', language)}
-              leftIcon={{
-                name: 'book',
-                color: colors.grey,
-                type: 'octicon',
-              }}
-              titleStyle={styles.listTitle}
-              onPress={() =>
-                navigation.navigate('ReadMe', {
-                  repository,
-                })}
-              underlayColor={colors.greyLight}
-            />
-            <ListItem
-              title={translate('repository.main.viewSource', language)}
-              titleStyle={styles.listTitle}
-              leftIcon={{
-                name: 'code',
-                color: colors.grey,
-                type: 'octicon',
-              }}
-              onPress={() =>
-                navigation.navigate('RepositoryCodeList', {
-                  title: translate('repository.codeList.title', language),
-                  topLevel: true,
-                })}
-              underlayColor={colors.greyLight}
-            />
-          </SectionList>
-
-          {!repository.fork &&
-          repository.has_issues && (
-            <SectionList
-              loading={isPendingIssues}
-              title={translate('repository.main.issuesTitle', language)}
-              noItems={openIssues.length === 0}
-              noItemsMessage={
-                pureIssues.length === 0 ? (
-                  translate('repository.main.noIssuesMessage', language)
-                ) : (
-                  translate('repository.main.noOpenIssuesMessage', language)
-                )
-              }
-              showButton
-              buttonTitle={
-                pureIssues.length > 0 ? (
-                  translate('repository.main.viewAllButton', language)
-                ) : (
-                  translate('repository.main.newIssueButton', language)
-                )
-              }
-              buttonAction={() => {
-                if (pureIssues.length > 0) {
-                  navigation.navigate('IssueList', {
-                    title: translate('repository.issueList.title', language),
-                    type: 'issue',
-                    issues: pureIssues,
-                  });
-                } else {
-                  navigation.navigate('NewIssue', {
-                    title: translate('issue.newIssue.title', language),
-                  });
+          {!hasError &&
+            !isPendingRepository &&
+            repository.hasIssuesEnabled && (
+              <SectionList
+                title={t('ISSUES', locale)}
+                noItems={openIssues.length === 0}
+                noItemsMessage={
+                  openIssues.length === 0
+                    ? t('No issues', locale)
+                    : t('No open issues', locale)
                 }
-              }}
-            >
-              {openIssues
-                .slice(0, 3)
-                .map(item => (
+                showButton
+                buttonTitle={
+                  openIssues.length > 0
+                    ? t('View All', locale)
+                    : t('New Issue', locale)
+                }
+                buttonAction={() => {
+                  if (openIssues.length > 0) {
+                    navigation.navigate('IssueList', {
+                      title: t('Issues', locale),
+                      searchType: 0,
+                      query: '',
+                      repository,
+                    });
+                  } else {
+                    navigation.navigate('NewIssue', {
+                      title: t('New Issue', locale),
+                      repository,
+                    });
+                  }
+                }}
+              >
+                {openIssues.map(item => (
                   <IssueListItem
                     key={item.id}
                     type="issue"
-                    issue={item}
+                    issue={toOldIssueFormat(item, repoId)}
                     navigation={navigation}
-                    language={language}
                   />
                 ))}
-            </SectionList>
-          )}
+              </SectionList>
+            )}
 
-          <SectionList
-            loading={isPendingIssues}
-            title={translate('repository.main.pullRequestTitle', language)}
-            noItems={openPulls.length === 0}
-            noItemsMessage={
-              pulls.length === 0 ? (
-                translate('repository.main.noPullRequestsMessage', language)
-              ) : (
-                translate('repository.main.noOpenPullRequestsMessage', language)
-              )
-            }
-            showButton={pulls.length > 0}
-            buttonTitle={translate('repository.main.viewAllButton', language)}
-            buttonAction={() =>
-              navigation.navigate('PullList', {
-                title: translate('repository.pullList.title', language),
-                type: 'pull',
-                issues: pulls,
-              })}
-          >
-            {openPulls
-              .slice(0, 3)
-              .map(item => (
-                <IssueListItem
-                  key={item.id}
-                  type="pull"
-                  issue={item}
-                  navigation={navigation}
-                  language={language}
-                />
-              ))}
-          </SectionList>
+          {!hasError &&
+            !isPendingRepository && (
+              <SectionList
+                title={t('PULL REQUESTS', locale)}
+                noItems={openPulls.length === 0}
+                noItemsMessage={
+                  openPulls.length === 0
+                    ? t('No pull requests', locale)
+                    : t('No open pull requests', locale)
+                }
+                showButton={openPulls.length > 0}
+                buttonTitle={t('View All', locale)}
+                buttonAction={() =>
+                  navigation.navigate('PullList', {
+                    title: t('Pull Requests', locale),
+                    searchType: 0,
+                    query: '',
+                    repository,
+                  })
+                }
+              >
+                {openPulls.map(item => (
+                  <IssueListItem
+                    key={item.id}
+                    type="pull"
+                    issue={toOldIssueFormat(item, repoId, true)}
+                    navigation={navigation}
+                    locale={locale}
+                  />
+                ))}
+              </SectionList>
+            )}
         </ParallaxScroll>
 
         <ActionSheet
           ref={o => {
             this.ActionSheet = o;
           }}
-          title={translate('repository.main.repoActions', language)}
-          options={[...repositoryActions, translate('common.cancel', language)]}
+          title={t('Repository Actions', locale)}
+          options={[...repositoryActions, t('Cancel', locale)]}
           cancelButtonIndex={repositoryActions.length}
           onPress={this.handlePress}
         />

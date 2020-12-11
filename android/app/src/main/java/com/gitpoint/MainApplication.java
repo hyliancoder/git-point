@@ -3,6 +3,12 @@ package com.gitpoint;
 import android.app.Application;
 
 import com.facebook.react.ReactApplication;
+import com.th3rdwave.safeareacontext.SafeAreaContextPackage;
+import com.reactnativecommunity.webview.RNCWebViewPackage;
+import com.reactnativecommunity.asyncstorage.AsyncStoragePackage;
+import com.horcrux.svg.SvgPackage;
+import com.BV.LinearGradient.LinearGradientPackage;
+import com.psykar.cookiemanager.CookieManagerPackage;
 import com.AlexanderZaytsev.RNI18n.RNI18nPackage;
 import com.reactnative.photoview.PhotoViewPackage;
 import com.lugg.ReactNativeConfig.ReactNativeConfigPackage;
@@ -35,6 +41,12 @@ public class MainApplication extends Application implements ReactApplication {
     protected List<ReactPackage> getPackages() {
       return Arrays.<ReactPackage>asList(
           new MainReactPackage(),
+            new SafeAreaContextPackage(),
+            new RNCWebViewPackage(),
+            new AsyncStoragePackage(),
+            new SvgPackage(),
+            new LinearGradientPackage(),
+            new CookieManagerPackage(),
             new RNI18nPackage(),
             new PhotoViewPackage(),
             new ReactNativeConfigPackage(),
@@ -42,6 +54,11 @@ public class MainApplication extends Application implements ReactApplication {
             new RNDeviceInfo(),
             new VectorIconsPackage()
       );
+    }
+
+    @Override
+    protected String getJSMainModuleName() {
+      return "index";
     }
   };
 

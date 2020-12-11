@@ -1,31 +1,47 @@
 import React, { Component } from 'react';
-import {
-  StyleSheet,
-  Image,
-  View,
-  Modal,
-  Dimensions,
-  TouchableOpacity,
-  TouchableHighlight,
-} from 'react-native';
+import { Image, Modal, Dimensions } from 'react-native';
 import { Icon } from 'react-native-elements';
+import styled from 'styled-components';
 import PhotoView from 'react-native-photo-view';
+import SvgUri from 'react-native-svg-from-uri';
 
 import { colors } from 'config';
 
-const styles = StyleSheet.create({
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.black,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  closeButton: {
-    position: 'absolute',
-    top: 30,
-    right: 10,
-  },
-});
+const Touchable = styled.TouchableHighlight`
+  justify-content: center;
+  align-items: center;
+`;
+
+const ModalContainer = styled.View`
+  flex: 1;
+  background-color: ${colors.black};
+  justify-content: center;
+  align-items: center;
+`;
+
+const StyledPhotoView = styled(PhotoView).attrs({
+  resizeMode: 'contain',
+  minimumZoomScale: 0.5,
+  maximumZoomScale: 3,
+})`
+  width: ${Dimensions.get('window').width}px;
+  height: ${Dimensions.get('window').height}px;
+`;
+
+const CloseButton = styled.TouchableOpacity.attrs({
+  activeOpacity: 0.5,
+})`
+  position: absolute;
+  top: 30px;
+  right: 10px;
+`;
+
+const CloseIcon = styled(Icon).attrs({
+  color: colors.white,
+  size: 28,
+  name: 'x',
+  type: 'octicon',
+})``;
 
 export class ImageZoom extends Component {
   props: {
@@ -33,11 +49,15 @@ export class ImageZoom extends Component {
     style: Object,
   };
 
-  constructor() {
-    super();
+  constructor(props) {
+    super(props);
     this.state = {
       imgZoom: false,
+      imgFailed: false,
     };
+
+    this.openModal = this.openModal.bind(this);
+    this.closeModal = this.closeModal.bind(this);
   }
 
   openModal() {
@@ -49,38 +69,49 @@ export class ImageZoom extends Component {
   }
 
   render() {
-    const window = Dimensions.get('window');
     const { uri, style } = this.props;
 
     if (this.state.imgZoom) {
       return (
-        <Modal animationType={'fade'}>
-          <View style={styles.modalContainer}>
-            <PhotoView
-              resizeMode={'contain'}
-              onTap={() => this.closeModal()}
+        <Modal
+          nativeId="image-zoom-modal"
+          animationType="fade"
+          onRequestClose={this.closeModal}
+        >
+          <ModalContainer>
+            <StyledPhotoView
+              nativeId="image-zoom-photo-view"
+              onTap={this.closeModal}
               source={uri}
-              minimumZoomScale={0.5}
-              maximumZoomScale={3}
-              style={{ width: window.width, height: window.height }}
             />
 
-            <TouchableOpacity
-              activeOpacity={0.5}
-              onPress={() => this.closeModal()}
-              style={styles.closeButton}
+            <CloseButton
+              nativeId="image-zoom-close-button"
+              onPress={this.closeModal}
             >
-              <Icon color={colors.white} size={28} name="x" type="octicon" />
-            </TouchableOpacity>
-          </View>
+              <CloseIcon />
+            </CloseButton>
+          </ModalContainer>
         </Modal>
       );
     }
 
+    if (this.state.imgFailed) {
+      return <SvgUri style={style} source={uri} />;
+    }
+
     return (
-      <TouchableHighlight onPress={() => this.openModal()}>
-        <Image style={style} source={uri} />
-      </TouchableHighlight>
+      <Touchable
+        nativeId="image-zoom-clickable-img"
+        onPress={this.openModal}
+        underlayColor="transparent"
+      >
+        <Image
+          style={style}
+          source={uri}
+          onError={() => this.setState({ imgFailed: true })}
+        />
+      </Touchable>
     );
   }
 }
